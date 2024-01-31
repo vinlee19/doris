@@ -178,7 +178,6 @@ private:
     // Used to counter send bytes under local data exchange
     RuntimeProfile::Counter* _local_bytes_send_counter = nullptr;
     RuntimeProfile::Counter* _merge_block_timer = nullptr;
-    RuntimeProfile::Counter* _memory_usage_counter = nullptr;
 
     RuntimeProfile::Counter* _wait_queue_timer = nullptr;
     RuntimeProfile::Counter* _wait_broadcast_buffer_timer = nullptr;
@@ -203,8 +202,7 @@ class ExchangeSinkOperatorX final : public DataSinkOperatorX<ExchangeSinkLocalSt
 public:
     ExchangeSinkOperatorX(RuntimeState* state, const RowDescriptor& row_desc, int operator_id,
                           const TDataStreamSink& sink,
-                          const std::vector<TPlanFragmentDestination>& destinations,
-                          bool send_query_statistics_with_every_batch);
+                          const std::vector<TPlanFragmentDestination>& destinations);
     Status init(const TDataSink& tsink) override;
 
     RuntimeState* state() { return _state; }
@@ -217,8 +215,6 @@ public:
 
     Status serialize_block(ExchangeSinkLocalState& stete, vectorized::Block* src, PBlock* dest,
                            int num_receivers = 1);
-
-    Status try_close(RuntimeState* state, Status exec_status) override;
 
 private:
     friend class ExchangeSinkLocalState;
@@ -244,7 +240,6 @@ private:
     PBlock _pb_block2;
 
     const std::vector<TPlanFragmentDestination> _dests;
-    const bool _send_query_statistics_with_every_batch;
 
     std::unique_ptr<MemTracker> _mem_tracker;
     // Identifier of the destination plan node.

@@ -20,7 +20,6 @@
 
 package org.apache.doris.planner;
 
-import org.apache.doris.analysis.AggregateInfo;
 import org.apache.doris.analysis.Analyzer;
 import org.apache.doris.analysis.BitmapFilterPredicate;
 import org.apache.doris.analysis.CompoundPredicate;
@@ -152,6 +151,8 @@ public abstract class PlanNode extends TreeNode<PlanNode> implements PlanStats {
     protected TupleDescriptor outputTupleDesc;
 
     protected List<Expr> projectList;
+
+    protected int nereidsId = -1;
 
     private List<List<Expr>> distributeExprLists = new ArrayList<>();
 
@@ -382,6 +383,9 @@ public abstract class PlanNode extends TreeNode<PlanNode> implements PlanStats {
     }
 
     public List<TupleId> getOutputTupleIds() {
+        if (outputTupleDesc != null) {
+            return Lists.newArrayList(outputTupleDesc.getId());
+        }
         return tupleIds;
     }
 
@@ -518,7 +522,11 @@ public abstract class PlanNode extends TreeNode<PlanNode> implements PlanStats {
         // Print the current node
         // The plan node header line will be prefixed by rootPrefix and the remaining details
         // will be prefixed by detailPrefix.
-        expBuilder.append(rootPrefix + id.asInt() + ":" + planNodeName + "\n");
+        expBuilder.append(rootPrefix + id.asInt() + ":" + planNodeName);
+        if (nereidsId != -1) {
+            expBuilder.append("(" + nereidsId + ")");
+        }
+        expBuilder.append("\n");
         expBuilder.append(getNodeExplainString(detailPrefix, detailLevel));
         if (limit != -1) {
             expBuilder.append(detailPrefix + "limit: " + limit + "\n");
@@ -872,10 +880,6 @@ public abstract class PlanNode extends TreeNode<PlanNode> implements PlanStats {
         return this.children.get(0).getNumInstances();
     }
 
-    public boolean shouldColoAgg(AggregateInfo aggregateInfo) {
-        return false;
-    }
-
     public void setShouldColoScan() {}
 
     public boolean getShouldColoScan() {
@@ -1204,5 +1208,9 @@ public abstract class PlanNode extends TreeNode<PlanNode> implements PlanStats {
 
     public boolean pushDownAggNoGroupingCheckCol(FunctionCallExpr aggExpr, Column col) {
         return false;
+    }
+
+    public void setNereidsId(int nereidsId) {
+        this.nereidsId = nereidsId;
     }
 }
