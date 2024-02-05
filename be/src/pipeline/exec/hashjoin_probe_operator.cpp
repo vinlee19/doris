@@ -301,7 +301,6 @@ Status HashJoinProbeOperatorX::pull(doris::RuntimeState* state, vectorized::Bloc
 
     Status st;
     if (local_state._probe_index < local_state._probe_block.rows()) {
-        local_state._build_indexes_null = local_state._shared_state->build_indexes_null;
         DCHECK(local_state._has_set_need_null_map_for_probe);
         RETURN_IF_CATCH_EXCEPTION({
             std::visit(
@@ -344,7 +343,7 @@ Status HashJoinProbeOperatorX::pull(doris::RuntimeState* state, vectorized::Bloc
                             if constexpr (!std::is_same_v<HashTableCtxType, std::monostate>) {
                                 bool eos = false;
                                 st = process_hashtable_ctx.process_data_in_hashtable(
-                                        arg, mutable_join_block, &temp_block, &eos);
+                                        arg, mutable_join_block, &temp_block, &eos, _is_mark_join);
                                 source_state = eos ? SourceState::FINISHED : source_state;
                             } else {
                                 st = Status::InternalError("uninited hash table");
