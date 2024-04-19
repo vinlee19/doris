@@ -332,7 +332,7 @@ public class DefaultJdbcExecutor {
 
     public boolean hasNext() throws UdfRuntimeException {
         try {
-            if (resultSet == null) {
+            if (resultSet == null || resultSet.isClosed()) {
                 return false;
             }
             return resultSet.next();
@@ -866,7 +866,7 @@ public class DefaultJdbcExecutor {
                 convertedList.add(convertArray((List<Object>) element, childType));
             } else {
                 if (converter != null) {
-                    convertedList.add(converter.convert(new Object[] {element})[0]);
+                    convertedList.add(converter.convert(new Object[]{element})[0]);
                 } else {
                     convertedList.add(element);
                 }
