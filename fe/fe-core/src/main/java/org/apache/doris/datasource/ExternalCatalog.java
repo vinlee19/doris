@@ -378,10 +378,14 @@ public abstract class ExternalCatalog
     @NotNull
     private List<String> getFilteredDatabaseNames() {
         List<String> allDatabases = Lists.newArrayList(listDatabaseNames());
-        allDatabases.remove(InfoSchemaDb.DATABASE_NAME);
-        allDatabases.add(InfoSchemaDb.DATABASE_NAME);
-        allDatabases.remove(MysqlDb.DATABASE_NAME);
-        allDatabases.add(MysqlDb.DATABASE_NAME);
+
+        if (name.equals(InternalCatalog.INTERNAL_CATALOG_NAME)) {
+            allDatabases.remove(InfoSchemaDb.DATABASE_NAME);
+            allDatabases.add(InfoSchemaDb.DATABASE_NAME);
+            allDatabases.remove(MysqlDb.DATABASE_NAME);
+            allDatabases.add(MysqlDb.DATABASE_NAME);
+        }
+
         Map<String, Boolean> includeDatabaseMap = getIncludeDatabaseMap();
         Map<String, Boolean> excludeDatabaseMap = getExcludeDatabaseMap();
         allDatabases = allDatabases.stream().filter(dbName -> {
