@@ -272,12 +272,12 @@ public:
         return subcolumns.get_mutable_root()->data.get_finalized_column_ptr()->assume_mutable();
     }
 
-    Status serialize_one_row_to_string(int64_t row, std::string* output) const;
+    Status serialize_one_row_to_string(size_t row, std::string* output) const;
 
-    Status serialize_one_row_to_string(int64_t row, BufferWritable& output) const;
+    Status serialize_one_row_to_string(size_t row, BufferWritable& output) const;
 
     // serialize one row to json format
-    Status serialize_one_row_to_json_format(int64_t row, rapidjson::StringBuffer* output,
+    Status serialize_one_row_to_json_format(size_t row, rapidjson::StringBuffer* output,
                                             bool* is_null) const;
 
     // merge multiple sub sparse columns into root
@@ -446,12 +446,6 @@ public:
     void update_crc_with_value(size_t start, size_t end, uint32_t& hash,
                                const uint8_t* __restrict null_data) const override;
 
-    // Not implemented
-    MutableColumnPtr get_shrinked_column() override {
-        throw doris::Exception(ErrorCode::NOT_IMPLEMENTED_ERROR,
-                               "get_shrinked_column" + get_name());
-    }
-
     Int64 get_int(size_t /*n*/) const override {
         throw doris::Exception(ErrorCode::NOT_IMPLEMENTED_ERROR, "get_int" + get_name());
     }
@@ -469,12 +463,6 @@ public:
                                size_t data_num, uint32_t dict_num = 0) override {
         throw doris::Exception(ErrorCode::NOT_IMPLEMENTED_ERROR,
                                "insert_many_dict_data" + get_name());
-    }
-
-    void insert_many_binary_data(char* data_array, uint32_t* len_array,
-                                 uint32_t* start_offset_array, size_t num) override {
-        throw doris::Exception(ErrorCode::NOT_IMPLEMENTED_ERROR,
-                               "insert_many_binary_data" + get_name());
     }
 
     void insert_many_continuous_binary_data(const char* data, const uint32_t* offsets,
@@ -535,11 +523,6 @@ public:
 
     StringRef get_raw_data() const override {
         throw doris::Exception(ErrorCode::NOT_IMPLEMENTED_ERROR, "get_raw_data" + get_name());
-    }
-
-    size_t size_of_value_if_fixed() const override {
-        throw doris::Exception(ErrorCode::NOT_IMPLEMENTED_ERROR,
-                               "size_of_value_if_fixed" + get_name());
     }
 
     StringRef get_data_at(size_t) const override {
