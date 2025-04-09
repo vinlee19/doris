@@ -50,13 +50,13 @@ public class JdbcSapHanaClient extends JdbcClient {
                 return Type.BIGINT;
             case "SMALLDECIMAL":
             case "DECIMAL": {
-                if (!fieldSchema.getDecimalDigits().isPresent()) {
-                    return Type.DOUBLE;
-                } else  {
-                    int precision = fieldSchema.getColumnSize().orElse(0);
-                    int scale = fieldSchema.getDecimalDigits().orElse(0);
-                    return createDecimalOrStringType(precision, scale);
-                }
+                // In SAP HANA, when you create a table with the DECIMAL data type and do not
+                // specify precision and scale, the default precision is 34 and the scale is null.
+                // We should not convert this to Doris DOUBLE type due to potential precision
+                // loss.
+                int precision = fieldSchema.getColumnSize().orElse(0);
+                int scale = fieldSchema.getDecimalDigits().orElse(0);
+                return createDecimalOrStringType(precision, scale);
             }
             case "REAL":
                 return Type.FLOAT;
@@ -79,10 +79,10 @@ public class JdbcSapHanaClient extends JdbcClient {
                 return Type.BOOLEAN;
             case "CHAR":
             case "NCHAR":
-                return ScalarType.createCharType(fieldSchema.requiredColumnSize());
-            case "TIME":
             case "VARCHAR":
             case "NVARCHAR":
+                return ScalarType.createCharType(fieldSchema.requiredColumnSize());
+            case "TIME":
             case "ALPHANUM":
             case "SHORTTEXT":
             case "CLOB":
@@ -92,6 +92,8 @@ public class JdbcSapHanaClient extends JdbcClient {
             case "BINARY":
             case "VARBINARY":
                 return ScalarType.createStringType();
+            case "JSON":
+                return ScalarType.createJsonbType();
             case "BLOB":
             case "ST_GEOMETRY":
             case "ST_POINT":
