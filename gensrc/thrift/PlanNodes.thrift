@@ -534,6 +534,13 @@ struct TIcebergMetadataParams {
   2: optional map<string, string> hadoop_props
 }
 
+
+struct TPaimonMetadataParams {
+  1: optional string serialized_task
+  2: optional map<string, string> hadoop_props
+  3: optional map<string, string> paimon_props
+}
+
 struct THudiMetadataParams {
   1: optional Types.THudiQueryType hudi_query_type
   2: optional string catalog

@@ -19,12 +19,14 @@ package org.apache.doris.datasource.paimon;
 
 import org.apache.doris.analysis.PartitionValue;
 import org.apache.doris.catalog.Column;
+import org.apache.doris.catalog.Env;
 import org.apache.doris.catalog.ListPartitionItem;
 import org.apache.doris.catalog.PartitionItem;
 import org.apache.doris.catalog.PartitionKey;
 import org.apache.doris.catalog.ScalarType;
 import org.apache.doris.catalog.Type;
 import org.apache.doris.common.AnalysisException;
+import org.apache.doris.datasource.ExternalCatalog;
 import org.apache.doris.datasource.hive.HiveUtil;
 
 import com.google.common.base.Preconditions;
@@ -48,11 +50,13 @@ import org.apache.paimon.types.DecimalType;
 import org.apache.paimon.types.MapType;
 import org.apache.paimon.types.RowType;
 import org.apache.paimon.types.VarCharType;
+import org.apache.paimon.utils.InstantiationUtil;
 import org.apache.paimon.utils.Pair;
 import org.apache.paimon.utils.Projection;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +65,7 @@ import javax.annotation.Nullable;
 
 public class PaimonUtil {
     private static final Logger LOG = LogManager.getLogger(PaimonUtil.class);
+    private static final Base64.Encoder ENCODER = Base64.getUrlEncoder();
 
     public static List<InternalRow> read(
             Table table, @Nullable int[] projection, @Nullable Predicate predicate,
@@ -224,5 +229,38 @@ public class PaimonUtil {
 
     public static Type paimonTypeToDorisType(org.apache.paimon.types.DataType type) {
         return paimonPrimitiveTypeToDorisType(type);
+    }
+
+    public static org.apache.paimon.table.Table getPaimonTable(ExternalCatalog catalog, String dbName,
+            String tblName) {
+        PaimonMetadataCache metadataCache = Env.getCurrentEnv()
+                .getExtMetaCacheMgr()
+                .getPaimonMetadataCache();
+        return metadataCache.getPaimonTable(catalog, dbName, tblName);
+    }
+
+    public static List<Column> parseSchema(RowType rowType) {
+        List<Column> resSchema = Lists.newArrayListWithCapacity(rowType.getFields().size());
+        rowType.getFields().forEach(field -> {
+            resSchema.add(new Column(field.name().toLowerCase(),
+                    PaimonUtil.paimonTypeToDorisType(field.type()), true, null, true, field.description(), true,
+                    field.id()));
+        });
+        return resSchema;
+    }
+
+    /**
+     * Serialize an object to a Base64 encoded string
+     * @param obj the object to serialize (e.g., Paimon Split)
+     * @param <T> the type of the object
+     * @return Base64 encoded string representation of the serialized object
+     */
+    public static <T> String serialize(T obj) {
+        try {
+            byte[] serializedBytes = InstantiationUtil.serializeObject(obj);
+            return ENCODER.encodeToString(serializedBytes);
+        } catch (Throwable e) {
+            throw new RuntimeException("Failed to serialize object: " + obj.getClass().getName(), e);
+        }
     }
 }

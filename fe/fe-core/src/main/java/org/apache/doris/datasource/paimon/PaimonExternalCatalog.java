@@ -219,4 +219,9 @@ public abstract class PaimonExternalCatalog extends ExternalCatalog {
             }
         }
     }
+
+    public Catalog getCatalog() {
+        makeSureInitialized();
+        return catalog;
+    }
 }
