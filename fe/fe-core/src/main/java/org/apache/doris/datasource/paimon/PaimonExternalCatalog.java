@@ -224,9 +224,4 @@ public abstract class PaimonExternalCatalog extends ExternalCatalog {
         makeSureInitialized();
         return catalog;
     }
-
-    public HadoopAuthenticator getHadoopAuthenticator() {
-        makeSureInitialized();
-        return hadoopAuthenticator;
-    }
 }
