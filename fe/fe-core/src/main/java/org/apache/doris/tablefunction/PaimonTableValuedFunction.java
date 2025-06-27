@@ -43,7 +43,6 @@ import org.apache.paimon.catalog.Catalog.TableNotExistException;
 import org.apache.paimon.catalog.Identifier;
 import org.apache.paimon.table.Table;
 import org.apache.paimon.table.source.Split;
-import org.apache.paimon.types.RowType;
 
 import java.util.List;
 import java.util.Map;
@@ -108,14 +107,13 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
             throw new AnalysisException("Catalog " + paimonTableName.getCtl() + " is not an external catalog");
         }
 
-        if (!(dorisCatalog instanceof PaimonExternalCatalog)) {
+        if (!(dorisCatalog instanceof PaimonExternalCatalog paimonExternalCatalog)) {
             throw new AnalysisException("Catalog " + paimonTableName.getCtl() + " is not an paimon catalog");
         }
 
-        PaimonExternalCatalog paimonExternalCatalog = (PaimonExternalCatalog) dorisCatalog;
-        hadoopProps = paimonExternalCatalog.getCatalogProperty().getHadoopProperties();
-        paimonProps = paimonExternalCatalog.getPaimonOptionsMap();
-        hadoopAuthenticator = paimonExternalCatalog.getHadoopAuthenticator();
+        this.hadoopProps = paimonExternalCatalog.getCatalogProperty().getHadoopProperties();
+        this.paimonProps = paimonExternalCatalog.getPaimonOptionsMap();
+        this.hadoopAuthenticator = paimonExternalCatalog.getHadoopAuthenticator();
 
         Table paimonTable;
         try {
@@ -144,8 +142,7 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
         }
 
         // obtain all schema
-        RowType rowType = paimonSysTable.rowType();
-        this.schema = PaimonUtil.parseSchema(rowType);
+        this.schema = PaimonUtil.parseSchema(paimonSysTable);
 
     }
 
@@ -176,6 +173,7 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
             TPaimonMetadataParams tPaimonMetadataParams = new TPaimonMetadataParams();
             tPaimonMetadataParams.setHadoopProps(hadoopProps);
             tPaimonMetadataParams.setPaimonProps(paimonProps);
+            tPaimonMetadataParams.setSerializedTable(PaimonUtil.serialize(paimonSysTable));
             tPaimonMetadataParams.setSerializedTask(PaimonUtil.serialize(split));
             scanRanges.add(tMetaScanRange);
         }

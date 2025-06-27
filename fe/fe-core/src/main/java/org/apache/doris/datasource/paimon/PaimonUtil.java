@@ -239,11 +239,17 @@ public class PaimonUtil {
         return metadataCache.getPaimonTable(catalog, dbName, tblName);
     }
 
-    public static List<Column> parseSchema(RowType rowType) {
+    public static List<Column> parseSchema(Table table) {
+        List<String> primaryKeys = table.primaryKeys();
+        return parseSchema(table.rowType(), primaryKeys);
+    }
+
+    public static List<Column> parseSchema(RowType rowType,List<String> primaryKeys) {
         List<Column> resSchema = Lists.newArrayListWithCapacity(rowType.getFields().size());
         rowType.getFields().forEach(field -> {
             resSchema.add(new Column(field.name().toLowerCase(),
-                    PaimonUtil.paimonTypeToDorisType(field.type()), true, null, true, field.description(), true,
+                    PaimonUtil.paimonTypeToDorisType(field.type()), primaryKeys.contains(field.name()), null, field.type().isNullable(),
+                    field.description(), true,
                     field.id()));
         });
         return resSchema;
