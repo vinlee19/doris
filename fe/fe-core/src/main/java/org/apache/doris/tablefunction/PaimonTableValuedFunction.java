@@ -103,19 +103,19 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
     public PaimonTableValuedFunction(TableName paimonTableName, String queryType)
             throws AnalysisException {
         this.queryType = queryType;
-        CatalogIf<?> dorsiCatalog = Env.getCurrentEnv().getCatalogMgr().getCatalog(paimonTableName.getCtl());
-        if (!(dorsiCatalog instanceof ExternalCatalog)) {
+        CatalogIf<?> dorisCatalog = Env.getCurrentEnv().getCatalogMgr().getCatalog(paimonTableName.getCtl());
+        if (!(dorisCatalog instanceof ExternalCatalog)) {
             throw new AnalysisException("Catalog " + paimonTableName.getCtl() + " is not an external catalog");
         }
 
-        if (!(dorsiCatalog instanceof PaimonExternalCatalog)) {
+        if (!(dorisCatalog instanceof PaimonExternalCatalog)) {
             throw new AnalysisException("Catalog " + paimonTableName.getCtl() + " is not an paimon catalog");
         }
 
-        PaimonExternalCatalog paimonExternalCatalog = (PaimonExternalCatalog) dorsiCatalog;
+        PaimonExternalCatalog paimonExternalCatalog = (PaimonExternalCatalog) dorisCatalog;
         hadoopProps = paimonExternalCatalog.getCatalogProperty().getHadoopProperties();
         paimonProps = paimonExternalCatalog.getPaimonOptionsMap();
-        hadoopAuthenticator = paimonExternalCatalog.getPreExecutionAuthenticator().getHadoopAuthenticator();
+        hadoopAuthenticator = paimonExternalCatalog.getHadoopAuthenticator();
 
         Table paimonTable;
         try {
