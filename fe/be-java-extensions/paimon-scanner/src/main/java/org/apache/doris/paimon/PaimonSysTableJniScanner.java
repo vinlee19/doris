@@ -72,7 +72,7 @@ public class PaimonSysTableJniScanner extends JniScanner {
         }
         this.params = params;
         String[] requiredFields = params.get("required_fields").split(",");
-        String[] requiredTypes = params.get("columns_types").split("#");
+        String[] requiredTypes = params.get("required_types").split("#");
         ColumnType[] columnTypes = new ColumnType[requiredTypes.length];
         for (int i = 0; i < requiredTypes.length; i++) {
             columnTypes[i] = ColumnType.parseType(requiredFields[i], requiredTypes[i]);
