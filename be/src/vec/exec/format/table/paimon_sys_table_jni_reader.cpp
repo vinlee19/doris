@@ -29,10 +29,7 @@ const std::string PaimonSysTableJniReader::HADOOP_OPTION_PREFIX = "hadoop.";
 PaimonSysTableJniReader::PaimonSysTableJniReader(
         const std::vector<SlotDescriptor*>& file_slot_descs, RuntimeState* state,
         RuntimeProfile* profile, const TPaimonMetadataParams& range_params)
-        : JniReader(file_slot_descs, state, profile), _range_params(range_params) {}
-
-Status PaimonSysTableJniReader::init_reader(
-        const std::unordered_map<std::string, ColumnValueRangeType>* colname_to_value_range) {
+        : JniReader(file_slot_descs, state, profile), _range_params(range_params) {
     std::vector<std::string> required_fields;
     std::vector<std::string> required_types;
     for (const auto& desc : _file_slot_descs) {
@@ -56,11 +53,6 @@ Status PaimonSysTableJniReader::init_reader(
 
     _jni_connector = std::make_unique<JniConnector>(
             "org/apache/doris/paimon/PaimonSysTableJniScanner", std::move(params), required_fields);
-    if (_jni_connector == nullptr) {
-        return Status::InternalError("JniConnector failed to initialize");
-    }
-    RETURN_IF_ERROR(_jni_connector->init(colname_to_value_range));
-    return _jni_connector->open(_state, _profile);
 }
 
 Status PaimonSysTableJniReader::init_reader(
