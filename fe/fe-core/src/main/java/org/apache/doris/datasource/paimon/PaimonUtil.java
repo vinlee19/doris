@@ -98,7 +98,7 @@ public class PaimonUtil {
     }
 
     public static PaimonPartitionInfo generatePartitionInfo(List<Column> partitionColumns,
-                                                            List<Partition> paimonPartitions) {
+            List<Partition> paimonPartitions) {
 
         if (CollectionUtils.isEmpty(partitionColumns) || paimonPartitions.isEmpty()) {
             return PaimonPartitionInfo.EMPTY;
@@ -244,11 +244,12 @@ public class PaimonUtil {
         return parseSchema(table.rowType(), primaryKeys);
     }
 
-    public static List<Column> parseSchema(RowType rowType,List<String> primaryKeys) {
+    public static List<Column> parseSchema(RowType rowType, List<String> primaryKeys) {
         List<Column> resSchema = Lists.newArrayListWithCapacity(rowType.getFields().size());
         rowType.getFields().forEach(field -> {
             resSchema.add(new Column(field.name().toLowerCase(),
-                    PaimonUtil.paimonTypeToDorisType(field.type()), primaryKeys.contains(field.name()), null, field.type().isNullable(),
+                    PaimonUtil.paimonTypeToDorisType(field.type()), primaryKeys.contains(field.name()), null,
+                    field.type().isNullable(),
                     field.description(), true,
                     field.id()));
         });
@@ -257,6 +258,7 @@ public class PaimonUtil {
 
     /**
      * Serialize an object to a Base64 encoded string
+     *
      * @param obj the object to serialize (e.g., Paimon Split)
      * @param <T> the type of the object
      * @return Base64 encoded string representation of the serialized object
