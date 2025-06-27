@@ -107,10 +107,10 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
             throw new AnalysisException("Catalog " + paimonTableName.getCtl() + " is not an external catalog");
         }
 
-        if (!(dorisCatalog instanceof PaimonExternalCatalog paimonExternalCatalog)) {
+        if (!(dorisCatalog instanceof PaimonExternalCatalog)) {
             throw new AnalysisException("Catalog " + paimonTableName.getCtl() + " is not an paimon catalog");
         }
-
+        PaimonExternalCatalog paimonExternalCatalog = (PaimonExternalCatalog) dorisCatalog;
         this.hadoopProps = paimonExternalCatalog.getCatalogProperty().getHadoopProperties();
         this.paimonProps = paimonExternalCatalog.getPaimonOptionsMap();
         this.hadoopAuthenticator = paimonExternalCatalog.getHadoopAuthenticator();
