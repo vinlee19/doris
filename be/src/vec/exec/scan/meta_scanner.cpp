@@ -42,6 +42,7 @@
 #include "vec/core/block.h"
 #include "vec/core/types.h"
 #include "vec/exec/format/table/iceberg_sys_table_jni_reader.h"
+#include "vec/exec/format/table/paimon_sys_table_jni_reader.h"
 
 namespace doris {
 class RuntimeProfile;
