@@ -65,7 +65,7 @@ import javax.annotation.Nullable;
 
 public class PaimonUtil {
     private static final Logger LOG = LogManager.getLogger(PaimonUtil.class);
-    private static final Base64.Encoder ENCODER = Base64.getUrlEncoder();
+    private static final Base64.Encoder BASE64_ENCODER = java.util.Base64.getUrlEncoder().withoutPadding();
 
     public static List<InternalRow> read(
             Table table, @Nullable int[] projection, @Nullable Predicate predicate,
@@ -256,19 +256,12 @@ public class PaimonUtil {
         return resSchema;
     }
 
-    /**
-     * Serialize an object to a Base64 encoded string
-     *
-     * @param obj the object to serialize (e.g., Paimon Split)
-     * @param <T> the type of the object
-     * @return Base64 encoded string representation of the serialized object
-     */
-    public static <T> String serialize(T obj) {
+    public static <T> String encodeObjectToString(T t) {
         try {
-            byte[] serializedBytes = InstantiationUtil.serializeObject(obj);
-            return ENCODER.encodeToString(serializedBytes);
-        } catch (Throwable e) {
-            throw new RuntimeException("Failed to serialize object: " + obj.getClass().getName(), e);
+            byte[] bytes = InstantiationUtil.serializeObject(t);
+            return new String(BASE64_ENCODER.encode(bytes), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 }

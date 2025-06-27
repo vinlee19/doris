@@ -173,8 +173,8 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
             TPaimonMetadataParams tPaimonMetadataParams = new TPaimonMetadataParams();
             tPaimonMetadataParams.setHadoopProps(hadoopProps);
             tPaimonMetadataParams.setPaimonProps(paimonProps);
-            tPaimonMetadataParams.setSerializedTable(PaimonUtil.serialize(paimonSysTable));
-            tPaimonMetadataParams.setSerializedTask(PaimonUtil.serialize(split));
+            tPaimonMetadataParams.setSerializedTable(PaimonUtil.encodeObjectToString(paimonSysTable));
+            tPaimonMetadataParams.setSerializedTask(PaimonUtil.encodeObjectToString(split));
             scanRanges.add(tMetaScanRange);
         }
 
