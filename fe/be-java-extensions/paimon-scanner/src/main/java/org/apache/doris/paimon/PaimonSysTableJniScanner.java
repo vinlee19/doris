@@ -36,6 +36,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
 /**
@@ -56,12 +57,12 @@ public class PaimonSysTableJniScanner extends JniScanner {
 
     private final ClassLoader classLoader;
     private final Split paimonSplit;
-    private Table table;
+    private final Table table;
     private RecordReader<InternalRow> reader;
     private final PaimonColumnValue columnValue = new PaimonColumnValue();
     private List<DataType> paimonDataTypeList;
-    private List<String> paimonAllFieldNames;
-    private PreExecutionAuthenticator preExecutionAuthenticator;
+    private final List<String> paimonAllFieldNames;
+    private final PreExecutionAuthenticator preExecutionAuthenticator;
     private RecordReader.RecordIterator<InternalRow> recordIterator = null;
 
     public PaimonSysTableJniScanner(int batchSize, Map<String, String> params) {
@@ -78,22 +79,22 @@ public class PaimonSysTableJniScanner extends JniScanner {
         }
         initTableInfo(columnTypes, requiredFields, batchSize);
         this.paimonSplit = PaimonUtils.deserialize(params.get("serialized_task"));
-        this.table = PaimonUtils.deserialize(params.get("table"));
+        this.table = PaimonUtils.deserialize(params.get("serialized_table"));
         this.paimonOptionParams = params.entrySet().stream()
                 .filter(kv -> kv.getKey().startsWith(PAIMON_OPTION_PREFIX))
                 .collect(Collectors
-                        .toMap(kv1 -> kv1.getKey().substring(PAIMON_OPTION_PREFIX.length()), kv1 -> kv1.getValue()));
+                        .toMap(kv1 -> kv1.getKey().substring(PAIMON_OPTION_PREFIX.length()), Entry::getValue));
         this.hadoopOptionParams = params.entrySet().stream()
                 .filter(kv -> kv.getKey().startsWith(HADOOP_OPTION_PREFIX))
                 .collect(Collectors
-                        .toMap(kv1 -> kv1.getKey().substring(HADOOP_OPTION_PREFIX.length()), kv1 -> kv1.getValue()));
+                        .toMap(kv1 -> kv1.getKey().substring(HADOOP_OPTION_PREFIX.length()), Entry::getValue));
         this.preExecutionAuthenticator = PreExecutionAuthenticatorCache.getAuthenticator(hadoopOptionParams);
         this.paimonAllFieldNames = PaimonUtils.getFieldNames(this.table.rowType());
     }
 
 
     @Override
-    public void open() throws IOException {
+    public void open() {
         try {
             // When the user does not specify hive-site.xml, Paimon will look for the file from the classpath:
             //    org.apache.paimon.hive.HiveCatalog.createHiveConf:
@@ -107,7 +108,7 @@ public class PaimonSysTableJniScanner extends JniScanner {
             resetDatetimeV2Precision();
 
         } catch (Throwable e) {
-            LOG.warn("Failed to open paimon_scanner: " + e.getMessage(), e);
+            LOG.warn("Failed to open paimon_scanner: {}", e.getMessage(), e);
             throw new RuntimeException(e);
         }
     }
