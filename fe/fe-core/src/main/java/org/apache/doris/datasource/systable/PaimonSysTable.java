@@ -43,7 +43,7 @@ public class PaimonSysTable extends SysTable {
 
     protected PaimonSysTable(String tableName) {
         super(tableName, "paimon_meta");
-        this.tableName = tvfName;
+        this.tableName = tableName;
     }
 
     public static List<PaimonSysTable> getSupportedIcebergSysTables() {
