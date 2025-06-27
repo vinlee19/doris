@@ -23,7 +23,7 @@ import org.apache.doris.catalog.Env;
 import org.apache.doris.common.AnalysisException;
 import org.apache.doris.common.ErrorCode;
 import org.apache.doris.common.ErrorReport;
-import org.apache.doris.common.security.authentication.PreExecutionAuthenticator;
+import org.apache.doris.common.security.authentication.HadoopAuthenticator;
 import org.apache.doris.datasource.CatalogIf;
 import org.apache.doris.datasource.ExternalCatalog;
 import org.apache.doris.datasource.paimon.PaimonExternalCatalog;
@@ -62,7 +62,7 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
     private final List<Column> schema;
     private final Map<String, String> hadoopProps;
     private final Map<String, String> paimonProps;
-    private final PreExecutionAuthenticator preExecutionAuthenticator;
+    private final HadoopAuthenticator hadoopAuthenticator;
 
 
     public static PaimonTableValuedFunction create(Map<String, String> params)
@@ -103,23 +103,23 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
     public PaimonTableValuedFunction(TableName paimonTableName, String queryType)
             throws AnalysisException {
         this.queryType = queryType;
-        CatalogIf<?> dorsiCatalog = Env.getCurrentEnv().getCatalogMgr().getCatalog(paimonTableName.getCtl());
-        if (!(dorsiCatalog instanceof ExternalCatalog)) {
+        CatalogIf<?> dorisCatalog = Env.getCurrentEnv().getCatalogMgr().getCatalog(paimonTableName.getCtl());
+        if (!(dorisCatalog instanceof ExternalCatalog)) {
             throw new AnalysisException("Catalog " + paimonTableName.getCtl() + " is not an external catalog");
         }
 
-        if (!(dorsiCatalog instanceof PaimonExternalCatalog)) {
+        if (!(dorisCatalog instanceof PaimonExternalCatalog)) {
             throw new AnalysisException("Catalog " + paimonTableName.getCtl() + " is not an paimon catalog");
         }
 
-        PaimonExternalCatalog paimonExternalCatalog = (PaimonExternalCatalog) dorsiCatalog;
+        PaimonExternalCatalog paimonExternalCatalog = (PaimonExternalCatalog) dorisCatalog;
         hadoopProps = paimonExternalCatalog.getCatalogProperty().getHadoopProperties();
         paimonProps = paimonExternalCatalog.getPaimonOptionsMap();
-        preExecutionAuthenticator = paimonExternalCatalog.getPreExecutionAuthenticator();
+        hadoopAuthenticator = paimonExternalCatalog.getHadoopAuthenticator();
 
         Table paimonTable;
         try {
-            paimonTable = preExecutionAuthenticator.execute(() ->
+            paimonTable = hadoopAuthenticator.doAs(() ->
                     PaimonUtil.getPaimonTable(paimonExternalCatalog, paimonTableName.getDb(),
                             paimonTableName.getTbl()));
         } catch (Exception e) {
@@ -127,7 +127,7 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
         }
 
         if (paimonTable == null) {
-            throw new AnalysisException("Paimon table " + paimonTable + " does not exist");
+            throw new AnalysisException("Paimon table " + paimonTableName + " does not exist");
         }
 
         // identifier.
@@ -162,9 +162,8 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
         List<Split> splits;
 
         try {
-            splits = preExecutionAuthenticator.execute(() -> {
-                return paimonSysTable.newReadBuilder().withProjection(projections).newScan().plan().splits();
-            });
+            splits = hadoopAuthenticator.doAs(() -> paimonSysTable.newReadBuilder()
+                    .withProjection(projections).newScan().plan().splits());
         } catch (Exception e) {
             throw new RuntimeException(ExceptionUtils.getRootCauseMessage(e));
         }
