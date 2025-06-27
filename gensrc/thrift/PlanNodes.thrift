@@ -537,8 +537,9 @@ struct TIcebergMetadataParams {
 
 struct TPaimonMetadataParams {
   1: optional string serialized_task
-  2: optional map<string, string> hadoop_props
-  3: optional map<string, string> paimon_props
+  2: optional string serialized_table
+  3: optional map<string, string> hadoop_props
+  4: optional map<string, string> paimon_props
 }
 
 struct THudiMetadataParams {
@@ -609,6 +610,7 @@ struct TMetaScanRange {
   10: optional TMetaCacheStatsParams meta_cache_stats_params
   11: optional TPartitionValuesMetadataParams partition_values_params
   12: optional THudiMetadataParams hudi_params
+  13: optional TPaimonMetadataParams paimon_params
 }
 
 // Specification of an individual data range which is held in its entirety

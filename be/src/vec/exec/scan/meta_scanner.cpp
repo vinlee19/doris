@@ -71,6 +71,12 @@ Status MetaScanner::open(RuntimeState* state) {
         const std::unordered_map<std::string, ColumnValueRangeType> colname_to_value_range;
         RETURN_IF_ERROR(reader->init_reader(&colname_to_value_range));
         _reader = std::move(reader);
+    } else if (_scan_range.meta_scan_range.metadata_type == TMetadataType::PAIMON) {
+        auto reader = PaimonSysTableJniReader::create_unique(
+                _tuple_desc->slots(), state, _profile, _scan_range.meta_scan_range.paimon_params);
+        const std::unordered_map<std::string, ColumnValueRangeType> colname_to_value_range;
+        RETURN_IF_ERROR(reader->init_reader(&colname_to_value_range));
+        _reader = std::move(reader);
     } else {
         RETURN_IF_ERROR(_fetch_metadata(_scan_range.meta_scan_range));
     }
