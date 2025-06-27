@@ -23,7 +23,7 @@ import org.apache.doris.catalog.Env;
 import org.apache.doris.common.AnalysisException;
 import org.apache.doris.common.ErrorCode;
 import org.apache.doris.common.ErrorReport;
-import org.apache.doris.common.security.authentication.HadoopAuthenticator;
+import org.apache.doris.common.security.authentication.PreExecutionAuthenticator;
 import org.apache.doris.datasource.CatalogIf;
 import org.apache.doris.datasource.ExternalCatalog;
 import org.apache.doris.datasource.paimon.PaimonExternalCatalog;
@@ -62,7 +62,7 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
     private final List<Column> schema;
     private final Map<String, String> hadoopProps;
     private final Map<String, String> paimonProps;
-    private final HadoopAuthenticator hadoopAuthenticator;
+    private final PreExecutionAuthenticator preExecutionAuthenticator;
 
 
     public static PaimonTableValuedFunction create(Map<String, String> params)
@@ -115,11 +115,11 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
         PaimonExternalCatalog paimonExternalCatalog = (PaimonExternalCatalog) dorsiCatalog;
         hadoopProps = paimonExternalCatalog.getCatalogProperty().getHadoopProperties();
         paimonProps = paimonExternalCatalog.getPaimonOptionsMap();
-        hadoopAuthenticator = paimonExternalCatalog.getPreExecutionAuthenticator().getHadoopAuthenticator();
+        preExecutionAuthenticator = paimonExternalCatalog.getPreExecutionAuthenticator();
 
         Table paimonTable;
         try {
-            paimonTable = hadoopAuthenticator.doAs(() ->
+            paimonTable = preExecutionAuthenticator.execute(() ->
                     PaimonUtil.getPaimonTable(paimonExternalCatalog, paimonTableName.getDb(),
                             paimonTableName.getTbl()));
         } catch (Exception e) {
@@ -127,7 +127,7 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
         }
 
         if (paimonTable == null) {
-            throw new AnalysisException("Paimon table " + paimonTableName + " does not exist");
+            throw new AnalysisException("Paimon table " + paimonTable + " does not exist");
         }
 
         // identifier.
@@ -162,11 +162,13 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
         List<Split> splits;
 
         try {
-            splits = hadoopAuthenticator.doAs(() -> paimonSysTable.newReadBuilder()
-                    .withProjection(projections).newScan().plan().splits());
+            splits = preExecutionAuthenticator.execute(() -> {
+                return paimonSysTable.newReadBuilder().withProjection(projections).newScan().plan().splits();
+            });
         } catch (Exception e) {
             throw new RuntimeException(ExceptionUtils.getRootCauseMessage(e));
         }
+
         //
         for (Split split : splits) {
             TMetaScanRange tMetaScanRange = new TMetaScanRange();
