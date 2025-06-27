@@ -175,6 +175,7 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
             tPaimonMetadataParams.setPaimonProps(paimonProps);
             tPaimonMetadataParams.setSerializedTable(PaimonUtil.encodeObjectToString(paimonSysTable));
             tPaimonMetadataParams.setSerializedTask(PaimonUtil.encodeObjectToString(split));
+            tMetaScanRange.setPaimonParams(tPaimonMetadataParams);
             scanRanges.add(tMetaScanRange);
         }
 

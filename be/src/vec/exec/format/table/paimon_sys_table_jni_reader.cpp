@@ -36,6 +36,12 @@ PaimonSysTableJniReader::PaimonSysTableJniReader(
         required_fields.emplace_back(desc->col_name());
         required_types.emplace_back(JniConnector::get_jni_type_with_different_string(desc->type()));
     }
+    if (_range_params.serialized_task.empty()) {
+        return Status::InternalError("serialized_task is empty");
+    }
+    if (_range_params.serialized_table.empty()) {
+        return Status::InternalError("serialized_table is empty");
+    }
     std::map<std::string, std::string> params;
     params["serialized_task"] = _range_params.serialized_task;
     params["serialized_table"] = _range_params.serialized_table;
