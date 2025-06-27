@@ -57,6 +57,7 @@ public:
             const std::unordered_map<std::string, ColumnValueRangeType>* colname_to_value_range);
 
 private:
+    const std::unordered_map<std::string, ColumnValueRangeType>* _colname_to_value_range;
     const TPaimonMetadataParams& _range_params;
 };
 
