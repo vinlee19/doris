@@ -23,7 +23,6 @@
 namespace doris::vectorized {
 #include "common/compile_check_begin.h"
 
-const std::string PaimonSysTableJniReader::PAIMON_OPTION_PREFIX = "paimon.";
 const std::string PaimonSysTableJniReader::HADOOP_OPTION_PREFIX = "hadoop.";
 
 PaimonSysTableJniReader::PaimonSysTableJniReader(
@@ -45,11 +44,6 @@ PaimonSysTableJniReader::PaimonSysTableJniReader(
 
     for (const auto& kv : _range_params.hadoop_props) {
         params[HADOOP_OPTION_PREFIX + kv.first] = kv.second;
-    }
-
-    // Used to create paimon option
-    for (const auto& kv : _range_params.paimon_props) {
-        params[PAIMON_OPTION_PREFIX + kv.first] = kv.second;
     }
 
     _jni_connector = std::make_unique<JniConnector>(
