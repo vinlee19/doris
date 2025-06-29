@@ -45,13 +45,9 @@ import java.util.stream.Collectors;
 public class PaimonSysTableJniScanner extends JniScanner {
     private static final Logger LOG = LoggerFactory.getLogger(PaimonSysTableJniScanner.class);
     @Deprecated
-    private static final String PAIMON_OPTION_PREFIX = "paimon.";
-    @Deprecated
     private static final String HADOOP_OPTION_PREFIX = "hadoop.";
 
     private final Map<String, String> params;
-    @Deprecated
-    private final Map<String, String> paimonOptionParams;
     @Deprecated
     private final Map<String, String> hadoopOptionParams;
 
@@ -78,12 +74,8 @@ public class PaimonSysTableJniScanner extends JniScanner {
             columnTypes[i] = ColumnType.parseType(requiredFields[i], requiredTypes[i]);
         }
         initTableInfo(columnTypes, requiredFields, batchSize);
-        this.paimonSplit = PaimonUtils.deserialize(params.get("serialized_task"));
+        this.paimonSplit = PaimonUtils.deserialize(params.get("serialized_split"));
         this.table = PaimonUtils.deserialize(params.get("serialized_table"));
-        this.paimonOptionParams = params.entrySet().stream()
-                .filter(kv -> kv.getKey().startsWith(PAIMON_OPTION_PREFIX))
-                .collect(Collectors
-                        .toMap(kv1 -> kv1.getKey().substring(PAIMON_OPTION_PREFIX.length()), Entry::getValue));
         this.hadoopOptionParams = params.entrySet().stream()
                 .filter(kv -> kv.getKey().startsWith(HADOOP_OPTION_PREFIX))
                 .collect(Collectors

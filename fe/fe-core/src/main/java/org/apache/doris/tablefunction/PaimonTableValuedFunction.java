@@ -40,7 +40,6 @@ import com.google.common.collect.Maps;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.paimon.catalog.Catalog;
 import org.apache.paimon.catalog.Catalog.TableNotExistException;
-import org.apache.paimon.catalog.Identifier;
 import org.apache.paimon.table.Table;
 import org.apache.paimon.table.source.Split;
 
@@ -60,7 +59,6 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
     private final Table paimonSysTable;
     private final List<Column> schema;
     private final Map<String, String> hadoopProps;
-    private final Map<String, String> paimonProps;
     private final HadoopAuthenticator hadoopAuthenticator;
 
 
@@ -80,9 +78,6 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
             throw new AnalysisException("Invalid paimon metadata query");
         }
 
-        if (queryType.equalsIgnoreCase("binlog") || queryType.equalsIgnoreCase("audit_log")) {
-            throw new AnalysisException("SysTable " + queryType + " is not supported yet");
-        }
         String[] names = tableName.split("\\.");
         if (names.length != 3) {
             throw new AnalysisException("The paimon table name contains the catalogName, databaseName, and tableName");
@@ -112,9 +107,9 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
         }
         PaimonExternalCatalog paimonExternalCatalog = (PaimonExternalCatalog) dorisCatalog;
         this.hadoopProps = paimonExternalCatalog.getCatalogProperty().getHadoopProperties();
-        this.paimonProps = paimonExternalCatalog.getPaimonOptionsMap();
-        this.hadoopAuthenticator = paimonExternalCatalog.getHadoopAuthenticator();
+        this.hadoopAuthenticator = paimonExternalCatalog.getPreExecutionAuthenticator().getHadoopAuthenticator();
 
+        // paimon internal table
         Table paimonTable;
         try {
             paimonTable = hadoopAuthenticator.doAs(() ->
@@ -128,17 +123,17 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
             throw new AnalysisException("Paimon table " + paimonTableName + " does not exist");
         }
 
-        // identifier.
-        Identifier identifier = new Identifier(paimonTableName.getDb(), paimonTableName.getTbl(), null, queryType);
-        Catalog catalog = paimonExternalCatalog.getCatalog();
+        // paimon system table identifier.
+        Catalog catalog = paimonExternalCatalog.getRemoteCatalog();
         try {
-            paimonSysTable = catalog.getTable(identifier);
+            paimonSysTable = PaimonUtil.getPaimonSystemTable(catalog, paimonTableName.getDb(), paimonTableName.getTbl(),
+                    queryType);
         } catch (TableNotExistException e) {
             throw new RuntimeException(ExceptionUtils.getRootCauseMessage(e));
         }
 
         if (paimonSysTable == null) {
-            throw new AnalysisException("Unrecognized queryType for iceberg metadata:" + queryType);
+            throw new AnalysisException("Unrecognized queryType for paimon metadata:" + queryType);
         }
 
         // obtain all schema
@@ -165,16 +160,14 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
             throw new RuntimeException(ExceptionUtils.getRootCauseMessage(e));
         }
 
-        //
         for (Split split : splits) {
             TMetaScanRange tMetaScanRange = new TMetaScanRange();
             tMetaScanRange.setMetadataType(TMetadataType.PAIMON);
             // set paimon metadata params
             TPaimonMetadataParams tPaimonMetadataParams = new TPaimonMetadataParams();
             tPaimonMetadataParams.setHadoopProps(hadoopProps);
-            tPaimonMetadataParams.setPaimonProps(paimonProps);
             tPaimonMetadataParams.setSerializedTable(PaimonUtil.encodeObjectToString(paimonSysTable));
-            tPaimonMetadataParams.setSerializedTask(PaimonUtil.encodeObjectToString(split));
+            tPaimonMetadataParams.setSerializedSplit(PaimonUtil.encodeObjectToString(split));
             tMetaScanRange.setPaimonParams(tPaimonMetadataParams);
             scanRanges.add(tMetaScanRange);
         }

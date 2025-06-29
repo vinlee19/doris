@@ -38,7 +38,7 @@ PaimonSysTableJniReader::PaimonSysTableJniReader(
     }
 
     std::map<std::string, std::string> params;
-    params["serialized_task"] = _range_params.serialized_task;
+    params["serialized_split"] = _range_params.serialized_split;
     params["serialized_table"] = _range_params.serialized_table;
     params["required_fields"] = join(required_fields, ",");
     params["required_types"] = join(required_types, "#");

@@ -35,6 +35,9 @@ import com.google.common.collect.Maps;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.paimon.catalog.Catalog;
+import org.apache.paimon.catalog.Catalog.TableNotExistException;
+import org.apache.paimon.catalog.Identifier;
 import org.apache.paimon.data.InternalRow;
 import org.apache.paimon.data.serializer.InternalRowSerializer;
 import org.apache.paimon.options.ConfigOption;
@@ -254,6 +257,19 @@ public class PaimonUtil {
                     field.id()));
         });
         return resSchema;
+    }
+
+
+    public static org.apache.paimon.table.Table getPaimonSystemTable(Catalog catalog, String dbName, String tblName,
+            String queryType) throws TableNotExistException {
+        return getPaimonSystemTable(catalog, dbName, tblName, null, queryType);
+    }
+
+    public static org.apache.paimon.table.Table getPaimonSystemTable(Catalog catalog, String dbName, String tblName,
+            String branch,
+            String queryType) throws TableNotExistException {
+        Identifier identifier = new Identifier(dbName, tblName, branch, queryType);
+        return catalog.getTable(identifier);
     }
 
     public static <T> String encodeObjectToString(T t) {
