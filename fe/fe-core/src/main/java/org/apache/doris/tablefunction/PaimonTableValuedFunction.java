@@ -68,15 +68,22 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
         if (!(dorisCatalog instanceof PaimonExternalCatalog)) {
             throw new AnalysisException("Catalog " + paimonTableName.getCtl() + " is not an paimon catalog");
         }
+
+        if (paimonTableName.getDb().equals("sys")) {
+            throw new AnalysisException("Paimon global system tables are only supported in Flink.");
+        }
+
         PaimonExternalCatalog paimonExternalCatalog = (PaimonExternalCatalog) dorisCatalog;
         this.hadoopProps = paimonExternalCatalog.getCatalogProperty().getHadoopProperties();
         this.hadoopAuthenticator = paimonExternalCatalog.getPreExecutionAuthenticator().getHadoopAuthenticator();
+
         boolean tableExist = paimonExternalCatalog.tableExist(ConnectContext.get().getSessionContext(),
                 paimonTableName.getDb(),
                 paimonTableName.getTbl());
         if (!tableExist) {
             throw new AnalysisException("Paimon table " + paimonTableName + " does not exist");
         }
+
         this.paimonSysTable = paimonExternalCatalog.getPaimonTable(paimonTableName.getDb(), paimonTableName.getTbl(),
                 queryType);
         // obtain all schema
@@ -93,6 +100,7 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
             // check ctl, db, tbl
             validParams.put(key.toLowerCase(), params.get(key));
         }
+
         String tableName = validParams.get(TABLE);
         String queryType = validParams.get(QUERY_TYPE);
         if (tableName == null || queryType == null) {
