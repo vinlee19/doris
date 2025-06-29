@@ -147,6 +147,22 @@ public abstract class PaimonExternalCatalog extends ExternalCatalog {
         }
     }
 
+    public org.apache.paimon.table.Table getPaimonTable(String dbName, String tblName, String queryType) {
+        return getPaimonTable(dbName, tblName, null, queryType);
+    }
+
+    public org.apache.paimon.table.Table getPaimonTable(String dbName, String tblName, String branch,
+            String queryType) {
+        makeSureInitialized();
+        try {
+            return hadoopAuthenticator.doAs(() -> catalog.getTable(new Identifier(dbName, tblName, branch, queryType)));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to get Paimon table:" + getName() + "."
+                    + dbName + "." + tblName + ", because " + e.getMessage(), e);
+        }
+    }
+
+
     public List<Partition> getPaimonPartitions(String dbName, String tblName) {
         makeSureInitialized();
         try {

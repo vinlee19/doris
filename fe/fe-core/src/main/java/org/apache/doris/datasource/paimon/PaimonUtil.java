@@ -19,14 +19,12 @@ package org.apache.doris.datasource.paimon;
 
 import org.apache.doris.analysis.PartitionValue;
 import org.apache.doris.catalog.Column;
-import org.apache.doris.catalog.Env;
 import org.apache.doris.catalog.ListPartitionItem;
 import org.apache.doris.catalog.PartitionItem;
 import org.apache.doris.catalog.PartitionKey;
 import org.apache.doris.catalog.ScalarType;
 import org.apache.doris.catalog.Type;
 import org.apache.doris.common.AnalysisException;
-import org.apache.doris.datasource.ExternalCatalog;
 import org.apache.doris.datasource.hive.HiveUtil;
 
 import com.google.common.base.Preconditions;
@@ -35,9 +33,6 @@ import com.google.common.collect.Maps;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.paimon.catalog.Catalog;
-import org.apache.paimon.catalog.Catalog.TableNotExistException;
-import org.apache.paimon.catalog.Identifier;
 import org.apache.paimon.data.InternalRow;
 import org.apache.paimon.data.serializer.InternalRowSerializer;
 import org.apache.paimon.options.ConfigOption;
@@ -234,14 +229,6 @@ public class PaimonUtil {
         return paimonPrimitiveTypeToDorisType(type);
     }
 
-    public static org.apache.paimon.table.Table getPaimonTable(ExternalCatalog catalog, String dbName,
-            String tblName) {
-        PaimonMetadataCache metadataCache = Env.getCurrentEnv()
-                .getExtMetaCacheMgr()
-                .getPaimonMetadataCache();
-        return metadataCache.getPaimonTable(catalog, dbName, tblName);
-    }
-
     public static List<Column> parseSchema(Table table) {
         List<String> primaryKeys = table.primaryKeys();
         return parseSchema(table.rowType(), primaryKeys);
@@ -257,19 +244,6 @@ public class PaimonUtil {
                     field.id()));
         });
         return resSchema;
-    }
-
-
-    public static org.apache.paimon.table.Table getPaimonSystemTable(Catalog catalog, String dbName, String tblName,
-            String queryType) throws TableNotExistException {
-        return getPaimonSystemTable(catalog, dbName, tblName, null, queryType);
-    }
-
-    public static org.apache.paimon.table.Table getPaimonSystemTable(Catalog catalog, String dbName, String tblName,
-            String branch,
-            String queryType) throws TableNotExistException {
-        Identifier identifier = new Identifier(dbName, tblName, branch, queryType);
-        return catalog.getTable(identifier);
     }
 
     public static <T> String encodeObjectToString(T t) {

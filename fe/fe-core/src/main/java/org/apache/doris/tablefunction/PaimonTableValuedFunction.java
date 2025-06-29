@@ -35,11 +35,8 @@ import org.apache.doris.thrift.TMetadataType;
 import org.apache.doris.thrift.TPaimonMetadataParams;
 
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang3.exception.ExceptionUtils;
-import org.apache.paimon.catalog.Catalog;
-import org.apache.paimon.catalog.Catalog.TableNotExistException;
 import org.apache.paimon.table.Table;
 import org.apache.paimon.table.source.Split;
 
@@ -48,7 +45,6 @@ import java.util.Map;
 import java.util.stream.IntStream;
 
 public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
-
     public static final String NAME = "paimon_meta";
     public static final String TABLE = "table";
     public static final String QUERY_TYPE = "query_type";
@@ -61,9 +57,33 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
     private final Map<String, String> hadoopProps;
     private final HadoopAuthenticator hadoopAuthenticator;
 
+    public PaimonTableValuedFunction(TableName paimonTableName, String queryType) throws AnalysisException {
+        this.queryType = queryType;
+        CatalogIf<?> dorisCatalog = Env.getCurrentEnv().getCatalogMgr().getCatalog(paimonTableName.getCtl());
+        if (!(dorisCatalog instanceof ExternalCatalog)) {
+            throw new AnalysisException("Catalog " + paimonTableName.getCtl() + " is not an external catalog");
+        }
 
-    public static PaimonTableValuedFunction create(Map<String, String> params)
-            throws AnalysisException {
+        if (!(dorisCatalog instanceof PaimonExternalCatalog)) {
+            throw new AnalysisException("Catalog " + paimonTableName.getCtl() + " is not an paimon catalog");
+        }
+        PaimonExternalCatalog paimonExternalCatalog = (PaimonExternalCatalog) dorisCatalog;
+        this.hadoopProps = paimonExternalCatalog.getCatalogProperty().getHadoopProperties();
+        this.hadoopAuthenticator = paimonExternalCatalog.getPreExecutionAuthenticator().getHadoopAuthenticator();
+        boolean tableExist = paimonExternalCatalog.tableExist(ConnectContext.get().getSessionContext(),
+                paimonTableName.getDb(),
+                paimonTableName.getTbl());
+        if (!tableExist) {
+            throw new AnalysisException("Paimon table " + paimonTableName + " does not exist");
+        }
+        this.paimonSysTable = paimonExternalCatalog.getPaimonTable(paimonTableName.getDb(), paimonTableName.getTbl(),
+                queryType);
+        // obtain all schema
+        this.schema = PaimonUtil.parseSchema(paimonSysTable);
+
+    }
+
+    public static PaimonTableValuedFunction create(Map<String, String> params) throws AnalysisException {
         Map<String, String> validParams = Maps.newHashMap();
         for (String key : params.keySet()) {
             if (!PROPERTIES_SET.contains(key.toLowerCase())) {
@@ -93,54 +113,6 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
         return new PaimonTableValuedFunction(paimonTableName, queryType);
     }
 
-
-    public PaimonTableValuedFunction(TableName paimonTableName, String queryType)
-            throws AnalysisException {
-        this.queryType = queryType;
-        CatalogIf<?> dorisCatalog = Env.getCurrentEnv().getCatalogMgr().getCatalog(paimonTableName.getCtl());
-        if (!(dorisCatalog instanceof ExternalCatalog)) {
-            throw new AnalysisException("Catalog " + paimonTableName.getCtl() + " is not an external catalog");
-        }
-
-        if (!(dorisCatalog instanceof PaimonExternalCatalog)) {
-            throw new AnalysisException("Catalog " + paimonTableName.getCtl() + " is not an paimon catalog");
-        }
-        PaimonExternalCatalog paimonExternalCatalog = (PaimonExternalCatalog) dorisCatalog;
-        this.hadoopProps = paimonExternalCatalog.getCatalogProperty().getHadoopProperties();
-        this.hadoopAuthenticator = paimonExternalCatalog.getPreExecutionAuthenticator().getHadoopAuthenticator();
-
-        // paimon internal table
-        Table paimonTable;
-        try {
-            paimonTable = hadoopAuthenticator.doAs(() ->
-                    PaimonUtil.getPaimonTable(paimonExternalCatalog, paimonTableName.getDb(),
-                            paimonTableName.getTbl()));
-        } catch (Exception e) {
-            throw new RuntimeException(ExceptionUtils.getRootCauseMessage(e));
-        }
-
-        if (paimonTable == null) {
-            throw new AnalysisException("Paimon table " + paimonTableName + " does not exist");
-        }
-
-        // paimon system table identifier.
-        Catalog catalog = paimonExternalCatalog.getRemoteCatalog();
-        try {
-            paimonSysTable = PaimonUtil.getPaimonSystemTable(catalog, paimonTableName.getDb(), paimonTableName.getTbl(),
-                    queryType);
-        } catch (TableNotExistException e) {
-            throw new RuntimeException(ExceptionUtils.getRootCauseMessage(e));
-        }
-
-        if (paimonSysTable == null) {
-            throw new AnalysisException("Unrecognized queryType for paimon metadata:" + queryType);
-        }
-
-        // obtain all schema
-        this.schema = PaimonUtil.parseSchema(paimonSysTable);
-
-    }
-
     @Override
     public TMetadataType getMetadataType() {
         return TMetadataType.PAIMON;
@@ -148,31 +120,17 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
 
     @Override
     public List<TMetaScanRange> getMetaScanRanges(List<String> requiredFileds) {
-        List<TMetaScanRange> scanRanges = Lists.newArrayList();
-        int[] projections = IntStream.range(0, requiredFileds.size())
-                .toArray();
+        int[] projections = IntStream.range(0, requiredFileds.size()).toArray();
         List<Split> splits;
 
         try {
-            splits = hadoopAuthenticator.doAs(() -> paimonSysTable.newReadBuilder()
-                    .withProjection(projections).newScan().plan().splits());
+            splits = hadoopAuthenticator.doAs(
+                    () -> paimonSysTable.newReadBuilder().withProjection(projections).newScan().plan().splits());
         } catch (Exception e) {
             throw new RuntimeException(ExceptionUtils.getRootCauseMessage(e));
         }
 
-        for (Split split : splits) {
-            TMetaScanRange tMetaScanRange = new TMetaScanRange();
-            tMetaScanRange.setMetadataType(TMetadataType.PAIMON);
-            // set paimon metadata params
-            TPaimonMetadataParams tPaimonMetadataParams = new TPaimonMetadataParams();
-            tPaimonMetadataParams.setHadoopProps(hadoopProps);
-            tPaimonMetadataParams.setSerializedTable(PaimonUtil.encodeObjectToString(paimonSysTable));
-            tPaimonMetadataParams.setSerializedSplit(PaimonUtil.encodeObjectToString(split));
-            tMetaScanRange.setPaimonParams(tPaimonMetadataParams);
-            scanRanges.add(tMetaScanRange);
-        }
-
-        return scanRanges;
+        return splits.stream().map(this::createMetaScanRange).toList();
     }
 
     @Override
@@ -183,5 +141,18 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
     @Override
     public List<Column> getTableColumns() throws AnalysisException {
         return schema;
+    }
+
+    private TMetaScanRange createMetaScanRange(Split split) {
+        TMetaScanRange tMetaScanRange = new TMetaScanRange();
+        tMetaScanRange.setMetadataType(TMetadataType.PAIMON);
+
+        TPaimonMetadataParams tPaimonMetadataParams = new TPaimonMetadataParams();
+        tPaimonMetadataParams.setHadoopProps(hadoopProps);
+        tPaimonMetadataParams.setSerializedTable(PaimonUtil.encodeObjectToString(paimonSysTable));
+        tPaimonMetadataParams.setSerializedSplit(PaimonUtil.encodeObjectToString(split));
+
+        tMetaScanRange.setPaimonParams(tPaimonMetadataParams);
+        return tMetaScanRange;
     }
 }
