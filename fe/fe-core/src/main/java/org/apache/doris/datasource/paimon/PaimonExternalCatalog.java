@@ -78,6 +78,7 @@ public abstract class PaimonExternalCatalog extends ExternalCatalog {
         }
         authConf = AuthenticationConfig.getKerberosConfig(conf);
         hadoopAuthenticator = HadoopAuthenticator.getHadoopAuthenticator(authConf);
+        initPreExecutionAuthenticator();
     }
 
     @Override
@@ -243,10 +244,5 @@ public abstract class PaimonExternalCatalog extends ExternalCatalog {
                 throw new DdlException("Required property '" + requiredProperty + "' is missing");
             }
         }
-    }
-
-    public Catalog getRemoteCatalog() {
-        makeSureInitialized();
-        return catalog;
     }
 }
