@@ -42,6 +42,7 @@ import org.apache.paimon.table.source.Split;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
@@ -130,7 +131,7 @@ public class PaimonTableValuedFunction extends MetadataTableValuedFunction {
             throw new RuntimeException(ExceptionUtils.getRootCauseMessage(e));
         }
 
-        return splits.stream().map(this::createMetaScanRange).toList();
+        return splits.stream().map(this::createMetaScanRange).collect(Collectors.toList());
     }
 
     @Override
