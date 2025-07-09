@@ -698,7 +698,7 @@ public class PaimonScanNode extends FileQueryScanNode {
             if (scanParams.isBranch()) {
                 PaimonExternalCatalog catalog = (PaimonExternalCatalog) source.getCatalog();
                 ExternalTable externalTable = (ExternalTable) source.getTargetTable();
-                return catalog.getPaimonSystemTable(externalTable.getOrBuildNameMapping(), null, refName);
+                return catalog.getPaimonSystemTable(externalTable.getOrBuildNameMapping(), refName, null);
             } else if (scanParams.isTag()) {
                 Map<String, String> options = source.getPaimonTable().options();
                 options.put(CoreOptions.SCAN_TAG_NAME.key(), refName);
