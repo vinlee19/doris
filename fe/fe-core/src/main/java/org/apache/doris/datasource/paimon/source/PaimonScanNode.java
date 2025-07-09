@@ -25,6 +25,8 @@ import org.apache.doris.common.MetaNotFoundException;
 import org.apache.doris.common.UserException;
 import org.apache.doris.common.util.FileFormatUtils;
 import org.apache.doris.common.util.LocationPath;
+import org.apache.doris.datasource.ExternalCatalog;
+import org.apache.doris.datasource.ExternalTable;
 import org.apache.doris.datasource.ExternalUtil;
 import org.apache.doris.datasource.FileQueryScanNode;
 import org.apache.doris.datasource.FileSplitter;
@@ -375,8 +377,17 @@ public class PaimonScanNode extends FileQueryScanNode {
                                 .indexOf(slot.getColumn().getName()))
                 .toArray();
         Table paimonTable = source.getPaimonTable();
-        Map<String, String> incrReadParams = getIncrReadParams();
-        paimonTable = paimonTable.copy(incrReadParams);
+
+        if (scanParams != null && scanParams.incrementalRead()) {
+            Map<String, String> incrReadParams = getIncrReadParams();
+            paimonTable = paimonTable.copy(incrReadParams);
+        } else if (scanParams != null && scanParams.isRo()) {
+            ExternalCatalog sourceCatalog = source.getCatalog();
+            PaimonExternalCatalog paimonExternalCatalog = (PaimonExternalCatalog) sourceCatalog;
+            ExternalTable externalTable = (ExternalTable) source.getTargetTable();
+            paimonTable = paimonExternalCatalog.getPaimonSystemTable(externalTable.getOrBuildNameMapping(), "ro");
+        }
+
         ReadBuilder readBuilder = paimonTable.newReadBuilder();
         return readBuilder.withFilter(predicates)
                 .withProjection(projected)
@@ -451,7 +462,7 @@ public class PaimonScanNode extends FileQueryScanNode {
             sb.append(prefix).append("PaimonSplitStats: \n");
             int size = splitStats.size();
             if (size <= 4) {
-                for (SplitStat splitStat : splitStats) {
+                for (PaimonScanNode.SplitStat splitStat : splitStats) {
                     sb.append(String.format("%s  %s\n", prefix, splitStat));
                 }
             } else {
