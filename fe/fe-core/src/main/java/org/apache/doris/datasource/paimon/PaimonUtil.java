@@ -18,6 +18,8 @@
 package org.apache.doris.datasource.paimon;
 
 import org.apache.doris.analysis.PartitionValue;
+import org.apache.doris.analysis.TableScanParams;
+import org.apache.doris.analysis.TableSnapshot;
 import org.apache.doris.catalog.Column;
 import org.apache.doris.catalog.ListPartitionItem;
 import org.apache.doris.catalog.PartitionItem;
@@ -25,6 +27,7 @@ import org.apache.doris.catalog.PartitionKey;
 import org.apache.doris.catalog.ScalarType;
 import org.apache.doris.catalog.Type;
 import org.apache.doris.common.AnalysisException;
+import org.apache.doris.common.util.TimeUtils;
 import org.apache.doris.datasource.hive.HiveUtil;
 import org.apache.doris.thrift.TColumnType;
 import org.apache.doris.thrift.TPrimitiveType;
@@ -37,11 +40,13 @@ import org.apache.doris.thrift.schema.external.TSchema;
 import org.apache.doris.thrift.schema.external.TStructField;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.paimon.CoreOptions;
 import org.apache.paimon.data.InternalRow;
 import org.apache.paimon.data.serializer.InternalRowSerializer;
 import org.apache.paimon.options.ConfigOption;
@@ -64,17 +69,21 @@ import org.apache.paimon.utils.Pair;
 import org.apache.paimon.utils.Projection;
 
 import java.io.IOException;
+import java.time.DateTimeException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 public class PaimonUtil {
     private static final Logger LOG = LogManager.getLogger(PaimonUtil.class);
     private static final Base64.Encoder BASE64_ENCODER = java.util.Base64.getUrlEncoder().withoutPadding();
+    private static final Pattern SNAPSHOT_ID_REGEX = Pattern.compile("\\d+");
 
     public static List<InternalRow> read(
             Table table, @Nullable int[] projection, @Nullable Predicate predicate,
@@ -371,4 +380,58 @@ public class PaimonUtil {
         }
     }
 
+    public static boolean isPaimonBranchOrTag(TableScanParams scanParams) {
+
+        if (scanParams.isBranch() || scanParams.isTag()) {
+            if (!scanParams.getMapParams().isEmpty()) {
+                Preconditions.checkArgument(
+                        scanParams.getMapParams().containsKey("name"),
+                        "must contain key 'name' in params"
+                );
+            } else {
+                Preconditions.checkArgument(
+                        scanParams.getListParams().size() == 1
+                                && scanParams.getListParams().get(0) != null,
+                        "must contain a branch/tag name in params"
+                );
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Extracts reference name from scan parameters.
+     */
+    public static String extractRefName(TableScanParams scanParams) {
+        return Optional.ofNullable(scanParams.getMapParams())
+                .filter(map -> !map.isEmpty())
+                .map(map -> map.get("name"))
+                .orElseGet(() -> scanParams.getListParams().get(0));
+    }
+
+    public static Table getQuerySpecSnapshotTable(Table sourceTable, TableSnapshot tableSnapshot) {
+        String value = tableSnapshot.getValue();
+        TableSnapshot.VersionType type = tableSnapshot.getType();
+
+        if (type == TableSnapshot.VersionType.VERSION && SNAPSHOT_ID_REGEX.matcher(value).matches()) {
+            // Handle snapshot ID
+            return createTableWithCoreOptions(sourceTable, ImmutableMap.of(
+                    CoreOptions.SCAN_SNAPSHOT_ID.key(), value
+            ));
+        } else {
+            // Handle timestamp
+            long timestamp = TimeUtils.timeStringToLong(value, TimeUtils.getTimeZone());
+            if (timestamp < 0) {
+                throw new DateTimeException("can't parse time: " + value);
+            }
+            return createTableWithCoreOptions(sourceTable, ImmutableMap.<String, String>builder()
+                    .put(CoreOptions.SCAN_TIMESTAMP.key(), String.valueOf(timestamp))
+                    .build());
+        }
+    }
+
+    public static Table createTableWithCoreOptions(Table source, Map<String, String> options) {
+        return source.copy(Maps.newHashMap(options));
+    }
 }
