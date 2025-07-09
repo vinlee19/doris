@@ -22,7 +22,6 @@ import org.apache.doris.analysis.TupleId;
 import org.apache.doris.common.UserException;
 import org.apache.doris.datasource.CatalogProperty;
 import org.apache.doris.datasource.paimon.PaimonFileExternalCatalog;
-import org.apache.doris.datasource.paimon.PaimonUtil;
 import org.apache.doris.planner.PlanNodeId;
 import org.apache.doris.qe.SessionVariable;
 
@@ -136,7 +135,7 @@ public class PaimonScanNodeTest {
         // 1. Only startSnapshotId
         Map<String, String> params = new HashMap<>();
         params.put("startSnapshotId", "5");
-        Map<String, String> result = PaimonUtil.validateIncrementalReadParams(params);
+        Map<String, String> result = PaimonScanNode.validateIncrementalReadParams(params);
         Assert.assertEquals("5", result.get("scan.snapshot-id"));
         Assert.assertNull(result.get("scan.mode"));
         Assert.assertEquals(2, result.size());
@@ -145,7 +144,7 @@ public class PaimonScanNodeTest {
         params.clear();
         params.put("startSnapshotId", "1");
         params.put("endSnapshotId", "5");
-        result = PaimonUtil.validateIncrementalReadParams(params);
+        result = PaimonScanNode.validateIncrementalReadParams(params);
         Assert.assertEquals("1,5", result.get("incremental-between"));
         Assert.assertTrue(result.containsKey("scan.mode") && result.get("scan.mode") == null);
         Assert.assertEquals(3, result.size());
@@ -155,7 +154,7 @@ public class PaimonScanNodeTest {
         params.put("startSnapshotId", "2");
         params.put("endSnapshotId", "8");
         params.put("incrementalBetweenScanMode", "diff");
-        result = PaimonUtil.validateIncrementalReadParams(params);
+        result = PaimonScanNode.validateIncrementalReadParams(params);
         Assert.assertEquals("2,8", result.get("incremental-between"));
         Assert.assertEquals("diff", result.get("incremental-between-scan-mode"));
         Assert.assertTrue(result.containsKey("scan.mode") && result.get("scan.mode") == null);
@@ -164,7 +163,7 @@ public class PaimonScanNodeTest {
         // 4. Only startTimestamp
         params.clear();
         params.put("startTimestamp", "1000");
-        result = PaimonUtil.validateIncrementalReadParams(params);
+        result = PaimonScanNode.validateIncrementalReadParams(params);
         Assert.assertEquals("1000," + Long.MAX_VALUE, result.get("incremental-between-timestamp"));
         Assert.assertTrue(result.containsKey("scan.mode") && result.get("scan.mode") == null);
         Assert.assertTrue(result.containsKey("scan.snapshot-id") && result.get("scan.snapshot-id") == null);
@@ -174,7 +173,7 @@ public class PaimonScanNodeTest {
         params.clear();
         params.put("startTimestamp", "1000");
         params.put("endTimestamp", "2000");
-        result = PaimonUtil.validateIncrementalReadParams(params);
+        result = PaimonScanNode.validateIncrementalReadParams(params);
         Assert.assertEquals("1000,2000", result.get("incremental-between-timestamp"));
         Assert.assertTrue(result.containsKey("scan.mode") && result.get("scan.mode") == null);
         Assert.assertTrue(result.containsKey("scan.snapshot-id") && result.get("scan.snapshot-id") == null);
@@ -187,7 +186,7 @@ public class PaimonScanNodeTest {
         params.put("startSnapshotId", "1");
         params.put("startTimestamp", "1000");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception for mutual exclusivity");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("Cannot specify both snapshot-based parameters"));
@@ -197,7 +196,7 @@ public class PaimonScanNodeTest {
         params.clear();
         params.put("endSnapshotId", "5");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception when startSnapshotId is missing");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("startSnapshotId is required"));
@@ -207,7 +206,7 @@ public class PaimonScanNodeTest {
         params.clear();
         params.put("endTimestamp", "2000");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception when startTimestamp is missing");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("startTimestamp is required"));
@@ -218,7 +217,7 @@ public class PaimonScanNodeTest {
         params.put("startSnapshotId", "1");
         params.put("incrementalBetweenScanMode", "auto");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception when incrementalBetweenScanMode appears without endSnapshotId");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("incrementalBetweenScanMode can only be specified when both"));
@@ -228,7 +227,7 @@ public class PaimonScanNodeTest {
         params.clear();
         params.put("incrementalBetweenScanMode", "auto");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception when incrementalBetweenScanMode appears alone");
         } catch (UserException e) {
             Assert.assertTrue(
@@ -239,7 +238,7 @@ public class PaimonScanNodeTest {
         params.clear();
         params.put("startSnapshotId", "0");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception for startSnapshotId ≤ 0");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("startSnapshotId must be greater than 0"));
@@ -248,7 +247,7 @@ public class PaimonScanNodeTest {
         params.clear();
         params.put("startSnapshotId", "-1");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception for negative startSnapshotId");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("startSnapshotId must be greater than 0"));
@@ -258,7 +257,7 @@ public class PaimonScanNodeTest {
         params.put("startSnapshotId", "1");
         params.put("endSnapshotId", "0");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception for endSnapshotId ≤ 0");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("endSnapshotId must be greater than 0"));
@@ -269,7 +268,7 @@ public class PaimonScanNodeTest {
         params.put("startSnapshotId", "5");
         params.put("endSnapshotId", "5");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception when startSnapshotId = endSnapshotId");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("startSnapshotId must be less than endSnapshotId"));
@@ -279,7 +278,7 @@ public class PaimonScanNodeTest {
         params.put("startSnapshotId", "6");
         params.put("endSnapshotId", "5");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception when startSnapshotId > endSnapshotId");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("startSnapshotId must be less than endSnapshotId"));
@@ -289,7 +288,7 @@ public class PaimonScanNodeTest {
         params.clear();
         params.put("startTimestamp", "-1");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception for startTimestamp < 0");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("startTimestamp must be greater than or equal to 0"));
@@ -299,7 +298,7 @@ public class PaimonScanNodeTest {
         params.put("startTimestamp", "1000");
         params.put("endTimestamp", "0");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception for endTimestamp ≤ 0");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("endTimestamp must be greater than 0"));
@@ -310,7 +309,7 @@ public class PaimonScanNodeTest {
         params.put("startTimestamp", "2000");
         params.put("endTimestamp", "2000");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception when startTimestamp = endTimestamp");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("startTimestamp must be less than endTimestamp"));
@@ -320,7 +319,7 @@ public class PaimonScanNodeTest {
         params.put("startTimestamp", "3000");
         params.put("endTimestamp", "2000");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception when startTimestamp > endTimestamp");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("startTimestamp must be less than endTimestamp"));
@@ -330,7 +329,7 @@ public class PaimonScanNodeTest {
         params.clear();
         params.put("startSnapshotId", "invalid");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception for invalid number format");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("Invalid startSnapshotId format"));
@@ -339,7 +338,7 @@ public class PaimonScanNodeTest {
         params.clear();
         params.put("startTimestamp", "invalid");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception for invalid timestamp format");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("Invalid startTimestamp format"));
@@ -351,7 +350,7 @@ public class PaimonScanNodeTest {
         params.put("endSnapshotId", "5");
         params.put("incrementalBetweenScanMode", "invalid");
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception for invalid scan mode");
         } catch (UserException e) {
             Assert.assertTrue(
@@ -365,7 +364,7 @@ public class PaimonScanNodeTest {
             params.put("startSnapshotId", "1");
             params.put("endSnapshotId", "5");
             params.put("incrementalBetweenScanMode", mode);
-            result = PaimonUtil.validateIncrementalReadParams(params);
+            result = PaimonScanNode.validateIncrementalReadParams(params);
             Assert.assertEquals("1,5", result.get("incremental-between"));
             Assert.assertEquals(mode, result.get("incremental-between-scan-mode"));
             Assert.assertTrue(result.containsKey("scan.mode") && result.get("scan.mode") == null);
@@ -376,7 +375,7 @@ public class PaimonScanNodeTest {
         // 18. Test no parameters at all
         params.clear();
         try {
-            PaimonUtil.validateIncrementalReadParams(params);
+            PaimonScanNode.validateIncrementalReadParams(params);
             Assert.fail("Should throw exception when no parameters provided");
         } catch (UserException e) {
             Assert.assertTrue(e.getMessage().contains("at least one valid parameter group must be specified"));
