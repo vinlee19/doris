@@ -700,8 +700,11 @@ public class PaimonScanNode extends FileQueryScanNode {
                 ExternalTable externalTable = (ExternalTable) source.getTargetTable();
                 return catalog.getPaimonSystemTable(externalTable.getOrBuildNameMapping(), null, refName);
             } else if (scanParams.isTag()) {
-                return PaimonUtil.createTableWithCoreOptions(source.getPaimonTable(), ImmutableMap.of(
-                        CoreOptions.SCAN_TAG_NAME.key(), refName));
+                Map<String, String> options = source.getPaimonTable().options();
+                options.put(CoreOptions.SCAN_TAG_NAME.key(), refName);
+                options.put(CoreOptions.SCAN_WATERMARK.key(), null);
+                options.put(CoreOptions.SCAN_SNAPSHOT_ID.key(), null);
+                return PaimonUtil.createTableWithCoreOptions(source.getPaimonTable(), options);
             }
         }
 
