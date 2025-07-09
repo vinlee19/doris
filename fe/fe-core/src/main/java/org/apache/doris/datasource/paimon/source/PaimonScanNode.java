@@ -17,6 +17,7 @@
 
 package org.apache.doris.datasource.paimon.source;
 
+import org.apache.doris.analysis.TableScanParams;
 import org.apache.doris.analysis.TupleDescriptor;
 import org.apache.doris.catalog.Env;
 import org.apache.doris.catalog.TableIf;
@@ -58,6 +59,8 @@ import org.apache.paimon.table.source.DataSplit;
 import org.apache.paimon.table.source.DeletionFile;
 import org.apache.paimon.table.source.RawFile;
 import org.apache.paimon.table.source.ReadBuilder;
+import org.apache.paimon.table.system.ReadOptimizedTable;
+import org.apache.paimon.table.system.SystemTableLoader;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -376,17 +379,7 @@ public class PaimonScanNode extends FileQueryScanNode {
                                 .collect(Collectors.toList())
                                 .indexOf(slot.getColumn().getName()))
                 .toArray();
-        Table paimonTable = source.getPaimonTable();
-
-        if (scanParams != null && scanParams.incrementalRead()) {
-            Map<String, String> incrReadParams = getIncrReadParams();
-            paimonTable = paimonTable.copy(incrReadParams);
-        } else if (scanParams != null && scanParams.isRo()) {
-            ExternalCatalog sourceCatalog = source.getCatalog();
-            PaimonExternalCatalog paimonExternalCatalog = (PaimonExternalCatalog) sourceCatalog;
-            ExternalTable externalTable = (ExternalTable) source.getTargetTable();
-            paimonTable = paimonExternalCatalog.getPaimonSystemTable(externalTable.getOrBuildNameMapping(), "ro");
-        }
+        Table paimonTable = applyScansParams(scanParams);
 
         ReadBuilder readBuilder = paimonTable.newReadBuilder();
         return readBuilder.withFilter(predicates)
@@ -666,6 +659,44 @@ public class PaimonScanNode extends FileQueryScanNode {
         }
 
         return paimonScanParams;
+    }
+
+
+    /**
+     * Processes and returns the appropriate Paimon table object based on scan parameters.
+     * <p>
+     * This method handles different scan modes including incremental reads and system tables,
+     * applying the necessary transformations to the base Paimon table.
+     *
+     * @param scanParams table scan parameters containing incremental read, system table configurations
+     * @return processed Paimon table object configured according to scan parameters
+     * @throws UserException when system table configuration is incorrect
+     */
+    private Table applyScansParams(TableScanParams scanParams) throws UserException {
+
+        // Return original table if no scan parameters are provided
+        if (scanParams == null) {
+            return source.getPaimonTable();
+        }
+
+        // Configure table for incremental read operations
+        if (scanParams.incrementalRead()) {
+
+            Map<String, String> incrReadParams = getIncrReadParams();
+            // Create a table copy with incremental read parameters applied
+            return source.getPaimonTable().copy(incrReadParams);
+        }
+
+        // Handle Paimon read-optimized system table scenario
+        if (scanParams.isRo()) {
+            PaimonExternalCatalog catalog = (PaimonExternalCatalog) source.getCatalog();
+            ExternalTable externalTable = (ExternalTable) source.getTargetTable();
+            return catalog.getPaimonSystemTable(externalTable.getOrBuildNameMapping(),
+                    ReadOptimizedTable.READ_OPTIMIZED);
+        }
+        // TODO: Add support for branch/tag-based table access
+
+        return source.getPaimonTable();
     }
 }
 
