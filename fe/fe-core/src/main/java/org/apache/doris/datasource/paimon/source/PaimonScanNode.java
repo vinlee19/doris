@@ -18,6 +18,7 @@
 package org.apache.doris.datasource.paimon.source;
 
 import org.apache.doris.analysis.TableScanParams;
+import org.apache.doris.analysis.TableSnapshot;
 import org.apache.doris.analysis.TupleDescriptor;
 import org.apache.doris.catalog.Env;
 import org.apache.doris.catalog.TableIf;
@@ -26,7 +27,6 @@ import org.apache.doris.common.MetaNotFoundException;
 import org.apache.doris.common.UserException;
 import org.apache.doris.common.util.FileFormatUtils;
 import org.apache.doris.common.util.LocationPath;
-import org.apache.doris.datasource.ExternalCatalog;
 import org.apache.doris.datasource.ExternalTable;
 import org.apache.doris.datasource.ExternalUtil;
 import org.apache.doris.datasource.FileQueryScanNode;
@@ -47,6 +47,7 @@ import org.apache.doris.thrift.TPushAggOp;
 import org.apache.doris.thrift.TTableFormatFileDesc;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -60,7 +61,6 @@ import org.apache.paimon.table.source.DeletionFile;
 import org.apache.paimon.table.source.RawFile;
 import org.apache.paimon.table.source.ReadBuilder;
 import org.apache.paimon.table.system.ReadOptimizedTable;
-import org.apache.paimon.table.system.SystemTableLoader;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -90,6 +90,7 @@ public class PaimonScanNode extends FileQueryScanNode {
     private static final String DORIS_END_TIMESTAMP = "endTimestamp";
     private static final String DORIS_INCREMENTAL_BETWEEN_SCAN_MODE = "incrementalBetweenScanMode";
     private static final String DEFAULT_INCREMENTAL_BETWEEN_SCAN_MODE = "auto";
+
 
     private enum SplitReadType {
         JNI,
@@ -379,7 +380,7 @@ public class PaimonScanNode extends FileQueryScanNode {
                                 .collect(Collectors.toList())
                                 .indexOf(slot.getColumn().getName()))
                 .toArray();
-        Table paimonTable = applyScansParams(scanParams);
+        Table paimonTable = applyScansParams(scanParams, getQueryTableSnapshot());
 
         ReadBuilder readBuilder = paimonTable.newReadBuilder();
         return readBuilder.withFilter(predicates)
@@ -672,8 +673,7 @@ public class PaimonScanNode extends FileQueryScanNode {
      * @return processed Paimon table object configured according to scan parameters
      * @throws UserException when system table configuration is incorrect
      */
-    private Table applyScansParams(TableScanParams scanParams) throws UserException {
-
+    private Table applyScansParams(TableScanParams scanParams, TableSnapshot tableSnapshot) throws UserException {
         // Return original table if no scan parameters are provided
         if (scanParams == null) {
             return source.getPaimonTable();
@@ -681,10 +681,7 @@ public class PaimonScanNode extends FileQueryScanNode {
 
         // Configure table for incremental read operations
         if (scanParams.incrementalRead()) {
-
-            Map<String, String> incrReadParams = getIncrReadParams();
-            // Create a table copy with incremental read parameters applied
-            return source.getPaimonTable().copy(incrReadParams);
+            return PaimonUtil.createTableWithCoreOptions(source.getPaimonTable(), getIncrReadParams());
         }
 
         // Handle Paimon read-optimized system table scenario
@@ -694,9 +691,22 @@ public class PaimonScanNode extends FileQueryScanNode {
             return catalog.getPaimonSystemTable(externalTable.getOrBuildNameMapping(),
                     ReadOptimizedTable.READ_OPTIMIZED);
         }
-        // TODO: Add support for branch/tag-based table access
 
-        return source.getPaimonTable();
+        // Handle branch/tag-based table access
+        if (PaimonUtil.isPaimonBranchOrTag(scanParams)) {
+            String refName = PaimonUtil.extractRefName(scanParams);
+            if (scanParams.isBranch()) {
+                PaimonExternalCatalog catalog = (PaimonExternalCatalog) source.getCatalog();
+                ExternalTable externalTable = (ExternalTable) source.getTargetTable();
+                return catalog.getPaimonSystemTable(externalTable.getOrBuildNameMapping(), null, refName);
+            } else if (scanParams.isTag()) {
+                return PaimonUtil.createTableWithCoreOptions(source.getPaimonTable(), ImmutableMap.of(
+                        CoreOptions.SCAN_TAG_NAME.key(), refName));
+            }
+        }
+
+        // Handle version-based table access
+        return PaimonUtil.getQuerySpecSnapshotTable(source.getPaimonTable(), tableSnapshot);
     }
 }
 
