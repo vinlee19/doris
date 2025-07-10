@@ -28,7 +28,9 @@ import org.apache.doris.catalog.ScalarType;
 import org.apache.doris.catalog.Type;
 import org.apache.doris.common.AnalysisException;
 import org.apache.doris.common.util.TimeUtils;
+import org.apache.doris.datasource.ExternalTable;
 import org.apache.doris.datasource.hive.HiveUtil;
+import org.apache.doris.datasource.paimon.source.PaimonSource;
 import org.apache.doris.thrift.TColumnType;
 import org.apache.doris.thrift.TPrimitiveType;
 import org.apache.doris.thrift.schema.external.TArrayField;
@@ -40,7 +42,6 @@ import org.apache.doris.thrift.schema.external.TSchema;
 import org.apache.doris.thrift.schema.external.TStructField;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.apache.commons.collections.CollectionUtils;
@@ -56,6 +57,7 @@ import org.apache.paimon.reader.RecordReader;
 import org.apache.paimon.schema.TableSchema;
 import org.apache.paimon.table.Table;
 import org.apache.paimon.table.source.ReadBuilder;
+import org.apache.paimon.table.system.ReadOptimizedTable;
 import org.apache.paimon.types.ArrayType;
 import org.apache.paimon.types.CharType;
 import org.apache.paimon.types.DataField;
@@ -71,11 +73,11 @@ import org.apache.paimon.utils.Projection;
 import java.io.IOException;
 import java.time.DateTimeException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -84,6 +86,23 @@ public class PaimonUtil {
     private static final Logger LOG = LogManager.getLogger(PaimonUtil.class);
     private static final Base64.Encoder BASE64_ENCODER = java.util.Base64.getUrlEncoder().withoutPadding();
     private static final Pattern SNAPSHOT_ID_REGEX = Pattern.compile("\\d+");
+
+    private static final List<ConfigOption<?>>
+            PAIMON_FROM_TIMESTAMP_CONFLICT_OPTIONS = Arrays.asList(
+            CoreOptions.SCAN_SNAPSHOT_ID,
+            CoreOptions.SCAN_FILE_CREATION_TIME_MILLIS,
+            CoreOptions.SCAN_TAG_NAME,
+            CoreOptions.INCREMENTAL_BETWEEN_TIMESTAMP,
+            CoreOptions.INCREMENTAL_BETWEEN,
+            CoreOptions.INCREMENTAL_TO_AUTO_TAG);
+
+    private static final List<ConfigOption<?>> PAIMON_FROM_SNAPSHOT_CONFLICT_OPTIONS = Arrays.asList(
+            CoreOptions.SCAN_TIMESTAMP_MILLIS,
+            CoreOptions.SCAN_TIMESTAMP,
+            CoreOptions.SCAN_FILE_CREATION_TIME_MILLIS,
+            CoreOptions.INCREMENTAL_BETWEEN_TIMESTAMP,
+            CoreOptions.INCREMENTAL_BETWEEN,
+            CoreOptions.INCREMENTAL_TO_AUTO_TAG);
 
     public static List<InternalRow> read(
             Table table, @Nullable int[] projection, @Nullable Predicate predicate,
@@ -380,58 +399,217 @@ public class PaimonUtil {
         }
     }
 
-    public static boolean isPaimonBranchOrTag(TableScanParams scanParams) {
-
-        if (scanParams.isBranch() || scanParams.isTag()) {
-            if (!scanParams.getMapParams().isEmpty()) {
-                Preconditions.checkArgument(
-                        scanParams.getMapParams().containsKey("name"),
-                        "must contain key 'name' in params"
-                );
-            } else {
-                Preconditions.checkArgument(
-                        scanParams.getListParams().size() == 1
-                                && scanParams.getListParams().get(0) != null,
-                        "must contain a branch/tag name in params"
-                );
-            }
-            return true;
-        }
-        return false;
+    /**
+     * Builds a READ OPTIMIZED system table .
+     *
+     * <p>Read-optimized tables scan only the topmost level files that don't require merging,
+     * which significantly improves reading performance for primary-key tables by avoiding
+     * the LSM merge process. This is equivalent to accessing the '$ro' system table in Paimon.
+     *
+     * <p>Usage examples:
+     * - Table hint: {@code @ro()}
+     *
+     * @param source the Paimon source containing catalog and table information
+     * @return a read-optimized Table instance for faster querying
+     */
+    public static Table buildReadOptimizedTable(PaimonSource source) {
+        PaimonExternalCatalog catalog = (PaimonExternalCatalog) source.getCatalog();
+        ExternalTable externalTable = (ExternalTable) source.getTargetTable();
+        return catalog.getPaimonSystemTable(externalTable.getOrBuildNameMapping(),
+                ReadOptimizedTable.READ_OPTIMIZED);
     }
 
     /**
-     * Extracts reference name from scan parameters.
+     * Builds a branch-specific table for time travel queries to a specific branch.
+     *
+     * <p>This method creates a table that reads from a specified branch, allowing users
+     * to query data from different development or experimental branches without affecting
+     * the main branch workflow.
+     *
+     * <p>Supported syntax:
+     * - Table hint: {@code @branch(branch_name)} or {@code @branch("name"="branch_name")}
+     * - SQL time travel: {@code FOR VERSION AS OF 'branch_name'}
+     *
+     * @param source the Paimon source containing catalog and table information
+     * @param scanParams the scan parameters containing branch name information
+     * @return a Table instance configured to read from the specified branch
+     * @throws IllegalArgumentException if branch name is not properly specified in scanParams
      */
-    public static String extractRefName(TableScanParams scanParams) {
-        return Optional.ofNullable(scanParams.getMapParams())
-                .filter(map -> !map.isEmpty())
-                .map(map -> map.get("name"))
-                .orElseGet(() -> scanParams.getListParams().get(0));
+    public static Table buildBranchTable(PaimonSource source, TableScanParams scanParams) {
+        String refName = extractRefName(scanParams);
+        PaimonExternalCatalog catalog = (PaimonExternalCatalog) source.getCatalog();
+        ExternalTable externalTable = (ExternalTable) source.getTargetTable();
+        return catalog.getPaimonSystemTable(externalTable.getOrBuildNameMapping(), refName, null);
     }
 
-    public static Table getQuerySpecSnapshotTable(Table sourceTable, TableSnapshot tableSnapshot) {
+    /**
+     * Builds a tag-specific table for time travel queries to a specific tag.
+     *
+     * <p>Tags in Paimon represent immutable snapshots that preserve historical data
+     * beyond the normal snapshot retention period. This method creates a table
+     * configured to read data from a specific tag.
+     *
+     * <p>Supported syntax:
+     * - Table hint: {@code @tag(tag_name)} or {@code @tag("name"="tag_name")}
+     * - SQL time travel: {@code FOR VERSION AS OF 'tag_name'}
+     *
+     * <p>Note: This method clears conflicting scan options to ensure compatibility
+     * with Paimon's FROM_SNAPSHOT startup mode requirements.
+     *
+     * @param baseTable the base Paimon table to copy configuration from
+     * @param scanParams the scan parameters containing tag name information
+     * @return a Table instance configured to read from the specified tag
+     * @throws IllegalArgumentException if tag name is not properly specified in scanParams
+     */
+    public static Table buildTagTable(Table baseTable, TableScanParams scanParams) {
+        String refName = extractRefName(scanParams);
+        Map<String, String> options = new HashMap<>(baseTable.options());
+
+        // For Paimon FROM_SNAPSHOT startup mode, must set only one key in:
+        // [scan_tag_name, scan_watermark, scan_snapshot_id]
+        options.put(CoreOptions.SCAN_TAG_NAME.key(), refName);
+        options.put(CoreOptions.SCAN_WATERMARK.key(), null);
+        options.put(CoreOptions.SCAN_SNAPSHOT_ID.key(), null);
+        options.putAll(excludePaimonConflictOptions(PAIMON_FROM_SNAPSHOT_CONFLICT_OPTIONS));
+
+        return baseTable.copy(options);
+    }
+
+    /**
+     * Builds a snapshot-specific table for time travel queries to a specific point in time.
+     *
+     * <p>This method supports both snapshot ID-based and timestamp-based time travel:
+     * - Snapshot ID: queries a specific numbered snapshot
+     * - Timestamp: queries the snapshot closest to the specified time
+     *
+     * <p>Supported syntax:
+     * - SQL time travel by ID: {@code FOR VERSION AS OF 1}
+     * - SQL time travel by timestamp: {@code FOR TIMESTAMP AS OF '2023-01-01 12:00:00'}
+     *
+     * @param baseTable the base Paimon table to copy configuration from
+     * @param tableSnapshot the snapshot specification (ID or timestamp)
+     * @return a Table instance configured to read from the specified snapshot or timestamp
+     * @throws DateTimeException if timestamp string cannot be parsed
+     */
+    public static Table buildSnapshotTable(Table baseTable, TableSnapshot tableSnapshot) {
         String value = tableSnapshot.getValue();
         TableSnapshot.VersionType type = tableSnapshot.getType();
 
         if (type == TableSnapshot.VersionType.VERSION && SNAPSHOT_ID_REGEX.matcher(value).matches()) {
-            // Handle snapshot ID
-            return createTableWithCoreOptions(sourceTable, ImmutableMap.of(
-                    CoreOptions.SCAN_SNAPSHOT_ID.key(), value
-            ));
+            return buildSnapshotIdTable(baseTable, value);
         } else {
-            // Handle timestamp
-            long timestamp = TimeUtils.timeStringToLong(value, TimeUtils.getTimeZone());
-            if (timestamp < 0) {
-                throw new DateTimeException("can't parse time: " + value);
-            }
-            return createTableWithCoreOptions(sourceTable, ImmutableMap.<String, String>builder()
-                    .put(CoreOptions.SCAN_TIMESTAMP.key(), String.valueOf(timestamp))
-                    .build());
+            return buildSnapshotTimestampTable(baseTable, value);
         }
     }
 
-    public static Table createTableWithCoreOptions(Table source, Map<String, String> options) {
-        return source.copy(Maps.newHashMap(options));
+    /**
+     * Builds a table configured to read from a specific snapshot ID.
+     *
+     * <p>Snapshot IDs are sequential numbers assigned to each commit in Paimon.
+     * This method configures the table to read the exact state at the specified snapshot.
+     *
+     * <p>Note: Clears conflicting scan options to ensure compatibility with
+     * Paimon's FROM_SNAPSHOT startup mode requirements.
+     *
+     * @param baseTable the base Paimon table to copy configuration from
+     * @param snapshotId the snapshot ID as a string (e.g., "123")
+     * @return a Table instance configured to read from the specified snapshot ID
+     */
+    public static Table buildSnapshotIdTable(Table baseTable, String snapshotId) {
+        Map<String, String> options = new HashMap<>(baseTable.options());
+
+        // For Paimon FROM_SNAPSHOT startup mode, must set only one key in:
+        // [scan_tag_name, scan_watermark, scan_snapshot_id]
+        options.put(CoreOptions.SCAN_TAG_NAME.key(), null);
+        options.put(CoreOptions.SCAN_WATERMARK.key(), null);
+        options.put(CoreOptions.SCAN_SNAPSHOT_ID.key(), snapshotId);
+        options.putAll(excludePaimonConflictOptions(PAIMON_FROM_SNAPSHOT_CONFLICT_OPTIONS));
+
+        return baseTable.copy(options);
+    }
+
+    /**
+     * Builds a table configured to read from a specific timestamp.
+     *
+     * <p>This method converts a timestamp string to epoch milliseconds and configures
+     * the table to read the snapshot that was active at that point in time.
+     *
+     * <p>Supported timestamp formats depend on TimeUtils.timeStringToLong() implementation,
+     * typically including ISO format and epoch timestamps.
+     *
+     * <p>Note: Clears conflicting scan options to ensure compatibility with
+     * Paimon's FROM_TIMESTAMP startup mode requirements.
+     *
+     * @param baseTable the base Paimon table to copy configuration from
+     * @param timestampStr the timestamp as a string
+     * @return a Table instance configured to read from the specified timestamp
+     * @throws DateTimeException if the timestamp string cannot be parsed
+     */
+    public static Table buildSnapshotTimestampTable(Table baseTable, String timestampStr) {
+        long timestamp = TimeUtils.timeStringToLong(timestampStr, TimeUtils.getTimeZone());
+        if (timestamp < 0) {
+            throw new DateTimeException("can't parse time: " + timestampStr);
+        }
+
+        Map<String, String> options = new HashMap<>(baseTable.options());
+
+        // For Paimon FROM_TIMESTAMP startup mode, must set only one key in:
+        // [scan_timestamp, scan_timestamp_millis]
+        options.put(CoreOptions.SCAN_TIMESTAMP.key(), String.valueOf(timestamp));
+        options.put(CoreOptions.SCAN_TIMESTAMP_MILLIS.key(), null);
+        options.putAll(excludePaimonConflictOptions(PAIMON_FROM_TIMESTAMP_CONFLICT_OPTIONS));
+
+        return baseTable.copy(options);
+    }
+
+    /**
+     * Extracts the reference name (branch or tag name) from table scan parameters.
+     *
+     * <p>This method supports two parameter formats:
+     * 1. Map format: {@code {"name": "reference_name"}} - used in structured hints
+     * 2. List format: {@code ["reference_name"]} - used in simple positional hints
+     *
+     * <p>Examples:
+     * - Map format: {@code @branch("name"="main")} → "main"
+     * - List format: {@code @tag(daily_backup)} → "daily_backup"
+     *
+     * @param scanParams the scan parameters containing reference name information
+     * @return the extracted reference name
+     * @throws IllegalArgumentException if the reference name is not properly specified
+     *         or if the required "name" key is missing in map format
+     */
+    public static String extractRefName(TableScanParams scanParams) {
+        if (!scanParams.getMapParams().isEmpty()) {
+            if (!scanParams.getMapParams().containsKey("name")) {
+                throw new IllegalArgumentException("must contain key 'name' in params");
+            }
+            return scanParams.getMapParams().get("name");
+        } else {
+            if (scanParams.getListParams().isEmpty() || scanParams.getListParams().get(0) == null) {
+                throw new IllegalArgumentException("must contain a branch/tag name in params");
+            }
+            return scanParams.getListParams().get(0);
+        }
+    }
+
+    /**
+     * Creates a map of conflicting Paimon options with null values for exclusion.
+     *
+     * <p>This utility method helps ensure that conflicting scan options are properly
+     * cleared when setting up specific scan modes. Paimon requires that only compatible
+     * options are set for each startup mode to avoid configuration conflicts.
+     *
+     * <p>The returned map contains all specified illegal options as keys with null values,
+     * which when applied to a table's options map, effectively removes those conflicting
+     * configurations.
+     *
+     * @param illegalOptions the list of ConfigOptions that should be set to null
+     * @return a HashMap containing the illegal options as keys with null values
+     */
+    public static Map<String, String> excludePaimonConflictOptions(List<ConfigOption<?>> illegalOptions) {
+        return illegalOptions.stream()
+                .collect(HashMap::new,
+                        (m, option) -> m.put(option.key(), null),
+                        HashMap::putAll);
     }
 }

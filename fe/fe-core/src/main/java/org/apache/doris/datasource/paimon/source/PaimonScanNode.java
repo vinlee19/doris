@@ -17,8 +17,6 @@
 
 package org.apache.doris.datasource.paimon.source;
 
-import org.apache.doris.analysis.TableScanParams;
-import org.apache.doris.analysis.TableSnapshot;
 import org.apache.doris.analysis.TupleDescriptor;
 import org.apache.doris.catalog.Env;
 import org.apache.doris.catalog.TableIf;
@@ -27,7 +25,6 @@ import org.apache.doris.common.MetaNotFoundException;
 import org.apache.doris.common.UserException;
 import org.apache.doris.common.util.FileFormatUtils;
 import org.apache.doris.common.util.LocationPath;
-import org.apache.doris.datasource.ExternalTable;
 import org.apache.doris.datasource.ExternalUtil;
 import org.apache.doris.datasource.FileQueryScanNode;
 import org.apache.doris.datasource.FileSplitter;
@@ -59,7 +56,6 @@ import org.apache.paimon.table.source.DataSplit;
 import org.apache.paimon.table.source.DeletionFile;
 import org.apache.paimon.table.source.RawFile;
 import org.apache.paimon.table.source.ReadBuilder;
-import org.apache.paimon.table.system.ReadOptimizedTable;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -379,7 +375,7 @@ public class PaimonScanNode extends FileQueryScanNode {
                                 .collect(Collectors.toList())
                                 .indexOf(slot.getColumn().getName()))
                 .toArray();
-        Table paimonTable = applyScansParams(scanParams, getQueryTableSnapshot());
+        Table paimonTable = getProcessedTable();
 
         ReadBuilder readBuilder = paimonTable.newReadBuilder();
         return readBuilder.withFilter(predicates)
@@ -668,47 +664,30 @@ public class PaimonScanNode extends FileQueryScanNode {
      * This method handles different scan modes including incremental reads and system tables,
      * applying the necessary transformations to the base Paimon table.
      *
-     * @param scanParams table scan parameters containing incremental read, system table configurations
      * @return processed Paimon table object configured according to scan parameters
      * @throws UserException when system table configuration is incorrect
      */
-    private Table applyScansParams(TableScanParams scanParams, TableSnapshot tableSnapshot) throws UserException {
-        // Return original table if no scan parameters are provided
-        if (scanParams == null) {
-            return source.getPaimonTable();
-        }
+    private Table getProcessedTable() throws UserException {
+        Table baseTable = source.getPaimonTable();
 
-        // Configure table for incremental read operations
-        if (scanParams.incrementalRead()) {
-            return PaimonUtil.createTableWithCoreOptions(source.getPaimonTable(), getIncrReadParams());
-        }
-
-        // Handle Paimon read-optimized system table scenario
-        if (scanParams.isRo()) {
-            PaimonExternalCatalog catalog = (PaimonExternalCatalog) source.getCatalog();
-            ExternalTable externalTable = (ExternalTable) source.getTargetTable();
-            return catalog.getPaimonSystemTable(externalTable.getOrBuildNameMapping(),
-                    ReadOptimizedTable.READ_OPTIMIZED);
-        }
-
-        // Handle branch/tag-based table access
-        if (PaimonUtil.isPaimonBranchOrTag(scanParams)) {
-            String refName = PaimonUtil.extractRefName(scanParams);
+        if (scanParams != null) {
+            if (scanParams.incrementalRead()) {
+                return baseTable.copy(getIncrReadParams());
+            }
+            if (scanParams.isRo()) {
+                return PaimonUtil.buildReadOptimizedTable(source);
+            }
             if (scanParams.isBranch()) {
-                PaimonExternalCatalog catalog = (PaimonExternalCatalog) source.getCatalog();
-                ExternalTable externalTable = (ExternalTable) source.getTargetTable();
-                return catalog.getPaimonSystemTable(externalTable.getOrBuildNameMapping(), refName, null);
-            } else if (scanParams.isTag()) {
-                Map<String, String> options = source.getPaimonTable().options();
-                options.put(CoreOptions.SCAN_TAG_NAME.key(), refName);
-                options.put(CoreOptions.SCAN_WATERMARK.key(), null);
-                options.put(CoreOptions.SCAN_SNAPSHOT_ID.key(), null);
-                return PaimonUtil.createTableWithCoreOptions(source.getPaimonTable(), options);
+                return PaimonUtil.buildBranchTable(source, scanParams);
+            }
+            if (scanParams.isTag()) {
+                return PaimonUtil.buildTagTable(baseTable, scanParams);
             }
         }
 
-        // Handle version-based table access
-        return PaimonUtil.getQuerySpecSnapshotTable(source.getPaimonTable(), tableSnapshot);
+        return Optional.ofNullable(tableSnapshot)
+                .map(snapshot -> PaimonUtil.buildSnapshotTable(baseTable, snapshot))
+                .orElse(baseTable);
     }
 }
 
