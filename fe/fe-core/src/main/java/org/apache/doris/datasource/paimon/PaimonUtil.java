@@ -20,6 +20,7 @@ package org.apache.doris.datasource.paimon;
 import org.apache.doris.analysis.PartitionValue;
 import org.apache.doris.analysis.TableScanParams;
 import org.apache.doris.analysis.TableSnapshot;
+import org.apache.doris.analysis.TableSnapshot.VersionType;
 import org.apache.doris.catalog.Column;
 import org.apache.doris.catalog.ListPartitionItem;
 import org.apache.doris.catalog.PartitionItem;
@@ -27,7 +28,6 @@ import org.apache.doris.catalog.PartitionKey;
 import org.apache.doris.catalog.ScalarType;
 import org.apache.doris.catalog.Type;
 import org.apache.doris.common.AnalysisException;
-import org.apache.doris.common.util.TimeUtils;
 import org.apache.doris.datasource.ExternalTable;
 import org.apache.doris.datasource.hive.HiveUtil;
 import org.apache.doris.datasource.paimon.source.PaimonSource;
@@ -85,7 +85,7 @@ import javax.annotation.Nullable;
 public class PaimonUtil {
     private static final Logger LOG = LogManager.getLogger(PaimonUtil.class);
     private static final Base64.Encoder BASE64_ENCODER = java.util.Base64.getUrlEncoder().withoutPadding();
-    private static final Pattern SNAPSHOT_ID_REGEX = Pattern.compile("\\d+");
+    private static final Pattern DIGITAL_REGEX = Pattern.compile("\\d+");
 
     private static final List<ConfigOption<?>>
             PAIMON_FROM_TIMESTAMP_CONFLICT_OPTIONS = Arrays.asList(
@@ -484,7 +484,7 @@ public class PaimonUtil {
      *
      * <p>Supported syntax:
      * - SQL time travel by ID: {@code FOR VERSION AS OF 1}
-     * - SQL time travel by timestamp: {@code FOR TIMESTAMP AS OF '2023-01-01 12:00:00'}
+     * - SQL time travel by timestamp: {@code FOR TIME AS OF '2023-01-01 12:00:00.001'}
      *
      * @param baseTable the base Paimon table to copy configuration from
      * @param tableSnapshot the snapshot specification (ID or timestamp)
@@ -495,8 +495,10 @@ public class PaimonUtil {
         String value = tableSnapshot.getValue();
         TableSnapshot.VersionType type = tableSnapshot.getType();
 
-        if (type == TableSnapshot.VersionType.VERSION && SNAPSHOT_ID_REGEX.matcher(value).matches()) {
+        if (type == TableSnapshot.VersionType.VERSION && DIGITAL_REGEX.matcher(value).matches()) {
             return buildSnapshotIdTable(baseTable, value);
+        } else if (type == VersionType.TIME && DIGITAL_REGEX.matcher(value).matches()) {
+            return buildSnapshotTimestampMillisTable(baseTable, value);
         } else {
             return buildSnapshotTimestampTable(baseTable, value);
         }
@@ -546,17 +548,24 @@ public class PaimonUtil {
      * @throws DateTimeException if the timestamp string cannot be parsed
      */
     public static Table buildSnapshotTimestampTable(Table baseTable, String timestampStr) {
-        long timestamp = TimeUtils.timeStringToLong(timestampStr, TimeUtils.getTimeZone());
-        if (timestamp < 0) {
-            throw new DateTimeException("can't parse time: " + timestampStr);
-        }
-
         Map<String, String> options = new HashMap<>(baseTable.options());
 
         // For Paimon FROM_TIMESTAMP startup mode, must set only one key in:
         // [scan_timestamp, scan_timestamp_millis]
-        options.put(CoreOptions.SCAN_TIMESTAMP.key(), String.valueOf(timestamp));
+        options.put(CoreOptions.SCAN_TIMESTAMP.key(), timestampStr);
         options.put(CoreOptions.SCAN_TIMESTAMP_MILLIS.key(), null);
+        options.putAll(excludePaimonConflictOptions(PAIMON_FROM_TIMESTAMP_CONFLICT_OPTIONS));
+
+        return baseTable.copy(options);
+    }
+
+    public static Table buildSnapshotTimestampMillisTable(Table baseTable, String timestampStr) {
+        Map<String, String> options = new HashMap<>(baseTable.options());
+
+        // For Paimon FROM_TIMESTAMP startup mode, must set only one key in:
+        // [scan_timestamp, scan_timestamp_millis]
+        options.put(CoreOptions.SCAN_TIMESTAMP.key(), null);
+        options.put(CoreOptions.SCAN_TIMESTAMP_MILLIS.key(), timestampStr);
         options.putAll(excludePaimonConflictOptions(PAIMON_FROM_TIMESTAMP_CONFLICT_OPTIONS));
 
         return baseTable.copy(options);
