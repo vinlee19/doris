@@ -91,7 +91,6 @@ public class PaimonUtil {
             PAIMON_FROM_TIMESTAMP_CONFLICT_OPTIONS = Arrays.asList(
             CoreOptions.SCAN_SNAPSHOT_ID,
             CoreOptions.SCAN_FILE_CREATION_TIME_MILLIS,
-            CoreOptions.SCAN_TAG_NAME,
             CoreOptions.INCREMENTAL_BETWEEN_TIMESTAMP,
             CoreOptions.INCREMENTAL_BETWEEN,
             CoreOptions.INCREMENTAL_TO_AUTO_TAG);
