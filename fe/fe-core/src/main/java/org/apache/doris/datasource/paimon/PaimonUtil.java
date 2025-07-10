@@ -48,6 +48,7 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.paimon.CoreOptions;
+import org.apache.paimon.CoreOptions.StartupMode;
 import org.apache.paimon.data.InternalRow;
 import org.apache.paimon.data.serializer.InternalRowSerializer;
 import org.apache.paimon.options.ConfigOption;
@@ -90,6 +91,7 @@ public class PaimonUtil {
     private static final List<ConfigOption<?>>
             PAIMON_FROM_TIMESTAMP_CONFLICT_OPTIONS = Arrays.asList(
             CoreOptions.SCAN_SNAPSHOT_ID,
+            CoreOptions.SCAN_TAG_NAME,
             CoreOptions.SCAN_FILE_CREATION_TIME_MILLIS,
             CoreOptions.INCREMENTAL_BETWEEN_TIMESTAMP,
             CoreOptions.INCREMENTAL_BETWEEN,
@@ -551,6 +553,7 @@ public class PaimonUtil {
 
         // For Paimon FROM_TIMESTAMP startup mode, must set only one key in:
         // [scan_timestamp, scan_timestamp_millis]
+        options.put(CoreOptions.SCAN_MODE.key(), StartupMode.FROM_TIMESTAMP.name());
         options.put(CoreOptions.SCAN_TIMESTAMP.key(), timestampStr);
         options.put(CoreOptions.SCAN_TIMESTAMP_MILLIS.key(), null);
         options.putAll(excludePaimonConflictOptions(PAIMON_FROM_TIMESTAMP_CONFLICT_OPTIONS));
@@ -563,6 +566,7 @@ public class PaimonUtil {
 
         // For Paimon FROM_TIMESTAMP startup mode, must set only one key in:
         // [scan_timestamp, scan_timestamp_millis]
+        options.put(CoreOptions.SCAN_MODE.key(), StartupMode.FROM_TIMESTAMP.name());
         options.put(CoreOptions.SCAN_TIMESTAMP.key(), null);
         options.put(CoreOptions.SCAN_TIMESTAMP_MILLIS.key(), timestampStr);
         options.putAll(excludePaimonConflictOptions(PAIMON_FROM_TIMESTAMP_CONFLICT_OPTIONS));
