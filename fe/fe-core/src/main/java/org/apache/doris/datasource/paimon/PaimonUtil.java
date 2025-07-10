@@ -553,7 +553,7 @@ public class PaimonUtil {
 
         // For Paimon FROM_TIMESTAMP startup mode, must set only one key in:
         // [scan_timestamp, scan_timestamp_millis]
-        options.put(CoreOptions.SCAN_MODE.key(), StartupMode.FROM_TIMESTAMP.name());
+        options.put(CoreOptions.SCAN_MODE.key(), "from-timestamp");
         options.put(CoreOptions.SCAN_TIMESTAMP.key(), timestampStr);
         options.put(CoreOptions.SCAN_TIMESTAMP_MILLIS.key(), null);
         options.putAll(excludePaimonConflictOptions(PAIMON_FROM_TIMESTAMP_CONFLICT_OPTIONS));
@@ -566,7 +566,7 @@ public class PaimonUtil {
 
         // For Paimon FROM_TIMESTAMP startup mode, must set only one key in:
         // [scan_timestamp, scan_timestamp_millis]
-        options.put(CoreOptions.SCAN_MODE.key(), StartupMode.FROM_TIMESTAMP.name());
+        options.put(CoreOptions.SCAN_MODE.key(), "from-timestamp");
         options.put(CoreOptions.SCAN_TIMESTAMP.key(), null);
         options.put(CoreOptions.SCAN_TIMESTAMP_MILLIS.key(), timestampStr);
         options.putAll(excludePaimonConflictOptions(PAIMON_FROM_TIMESTAMP_CONFLICT_OPTIONS));
