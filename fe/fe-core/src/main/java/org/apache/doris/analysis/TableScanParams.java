@@ -27,6 +27,8 @@ public class TableScanParams {
     public static String INCREMENTAL_READ = "incr";
     public static String BRANCH = "branch";
     public static String TAG = "tag";
+    // paimon Read-optimized System Table.
+    public static String RO = "ro";
 
     private final String paramType;
     // There are two ways to pass parameters to a function.
@@ -65,5 +67,9 @@ public class TableScanParams {
 
     public boolean isTag() {
         return TAG.equals(paramType);
+    }
+
+    public boolean isRo() {
+        return RO.equals(paramType);
     }
 }

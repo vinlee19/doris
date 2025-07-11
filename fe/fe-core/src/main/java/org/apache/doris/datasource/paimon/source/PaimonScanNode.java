@@ -374,9 +374,13 @@ public class PaimonScanNode extends FileQueryScanNode {
                                 .collect(Collectors.toList())
                                 .indexOf(slot.getColumn().getName()))
                 .toArray();
-        Table paimonTable = source.getPaimonTable();
-        Map<String, String> incrReadParams = getIncrReadParams();
-        paimonTable = paimonTable.copy(incrReadParams);
+
+        // Get the processed Paimon table instance based on scan parameters
+        // - For incremental reads: returns table with incremental read parameters
+        // - For read-optimized (@ro): returns read-optimized table for faster queries
+        // - Default: returns the base Paimon table
+        Table paimonTable = getProcessedTable();
+
         ReadBuilder readBuilder = paimonTable.newReadBuilder();
         return readBuilder.withFilter(predicates)
                 .withProjection(projected)
@@ -655,6 +659,30 @@ public class PaimonScanNode extends FileQueryScanNode {
         }
 
         return paimonScanParams;
+    }
+
+    /**
+     * Processes and returns the appropriate Paimon table object based on scan parameters or table snapshot.
+     * <p>
+     * This method handles different scan modes including incremental reads and system tables,
+     * applying the necessary transformations to the base Paimon table.
+     *
+     * @return processed Paimon table object configured according to scan parameters
+     * @throws UserException when system table configuration is incorrect
+     */
+    private Table getProcessedTable() throws UserException {
+        Table baseTable = source.getPaimonTable();
+
+        if (scanParams != null) {
+            if (scanParams.incrementalRead()) {
+                return baseTable.copy(getIncrReadParams());
+            }
+            if (scanParams.isRo()) {
+                return PaimonUtil.buildReadOptimizedTable(scanParams, source);
+            }
+        }
+
+        return baseTable;
     }
 }
 

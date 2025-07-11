@@ -171,11 +171,11 @@ public abstract class PaimonExternalCatalog extends ExternalCatalog {
         }
     }
 
-    public org.apache.paimon.table.Table getPaimonSystemTable(NameMapping nameMapping, String queryType) {
-        return getPaimonSystemTable(nameMapping, null, queryType);
+    public org.apache.paimon.table.Table getPaimonTable(NameMapping nameMapping, String queryType) {
+        return getPaimonTable(nameMapping, null, queryType);
     }
 
-    public org.apache.paimon.table.Table getPaimonSystemTable(NameMapping nameMapping, String branch,
+    public org.apache.paimon.table.Table getPaimonTable(NameMapping nameMapping, String branch,
             String queryType) {
         makeSureInitialized();
         try {

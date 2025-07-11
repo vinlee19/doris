@@ -18,6 +18,7 @@
 package org.apache.doris.datasource.paimon;
 
 import org.apache.doris.analysis.PartitionValue;
+import org.apache.doris.analysis.TableScanParams;
 import org.apache.doris.catalog.Column;
 import org.apache.doris.catalog.ListPartitionItem;
 import org.apache.doris.catalog.PartitionItem;
@@ -25,7 +26,10 @@ import org.apache.doris.catalog.PartitionKey;
 import org.apache.doris.catalog.ScalarType;
 import org.apache.doris.catalog.Type;
 import org.apache.doris.common.AnalysisException;
+import org.apache.doris.common.UserException;
+import org.apache.doris.datasource.ExternalTable;
 import org.apache.doris.datasource.hive.HiveUtil;
+import org.apache.doris.datasource.paimon.source.PaimonSource;
 import org.apache.doris.thrift.TColumnType;
 import org.apache.doris.thrift.TPrimitiveType;
 import org.apache.doris.thrift.schema.external.TArrayField;
@@ -51,6 +55,7 @@ import org.apache.paimon.reader.RecordReader;
 import org.apache.paimon.schema.TableSchema;
 import org.apache.paimon.table.Table;
 import org.apache.paimon.table.source.ReadBuilder;
+import org.apache.paimon.table.system.ReadOptimizedTable;
 import org.apache.paimon.types.ArrayType;
 import org.apache.paimon.types.CharType;
 import org.apache.paimon.types.DataField;
@@ -369,6 +374,38 @@ public class PaimonUtil {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    /**
+     * Builds a READ OPTIMIZED system table .
+     *
+     * <p>Read-optimized tables scan only the topmost level files that don't require merging,
+     * which significantly improves reading performance for primary-key tables by avoiding
+     * the LSM merge process. This is equivalent to accessing the '$ro' system table in Paimon.
+     *
+     * <p>Usage examples:
+     * - Table hint: {@code @ro()}
+     *
+     * @param source the Paimon source containing catalog and table information
+     * @return a read-optimized Table instance for faster querying
+     */
+    public static Table buildReadOptimizedTable(TableScanParams scanParams, PaimonSource source) throws UserException {
+
+        if (!scanParams.getMapParams().isEmpty() || !scanParams.getListParams().isEmpty()) {
+            String tableName = source.getTargetTable().getName();
+            throw new UserException(
+                    String.format("Paimon system read-optimized table does not support passing parameters. "
+                            + "Correct usage example: %s@ro()", tableName)
+            );
+        }
+
+        PaimonExternalCatalog catalog = (PaimonExternalCatalog) source.getCatalog();
+        ExternalTable externalTable = (ExternalTable) source.getTargetTable();
+
+        return catalog.getPaimonTable(
+                externalTable.getOrBuildNameMapping(),
+                ReadOptimizedTable.READ_OPTIMIZED
+        );
     }
 
 }
