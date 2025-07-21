@@ -378,9 +378,20 @@ public class PaimonScanNode extends FileQueryScanNode {
         Map<String, String> incrReadParams = getIncrReadParams();
         paimonTable = paimonTable.copy(incrReadParams);
         ReadBuilder readBuilder = paimonTable.newReadBuilder();
-        return readBuilder.withFilter(predicates)
-                .withProjection(projected)
-                .newScan().plan().splits();
+        List<org.apache.paimon.table.source.Split> splits;
+        if (getLimit() != -1 && getLimit() <= Integer.MAX_VALUE) {
+            int paimonLimit = (int) getLimit();
+            splits = readBuilder.withLimit(paimonLimit)
+                    .withFilter(predicates)
+                    .withProjection(projected)
+                    .newScan().plan().splits();
+        } else {
+            splits = readBuilder.withFilter(predicates)
+                    .withProjection(projected)
+                    .newScan().plan().splits();
+        }
+
+        return splits;
     }
 
     private String getFileFormat(String path) {
