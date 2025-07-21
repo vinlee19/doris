@@ -245,9 +245,16 @@ public class PaimonExternalTable extends ExternalTable implements MTMVRelatedTab
             List<Column> dorisColumns = Lists.newArrayListWithCapacity(columns.size());
             Set<String> partitionColumnNames = Sets.newHashSet(tableSchema.partitionKeys());
             List<Column> partitionColumns = Lists.newArrayList();
+            //Refrence:https://github.com/apache/paimon/pull/1425
+            Map<String, String> fieldDefaultValues = PaimonUtil.getFieldDefaultValues(tableSchema);
             for (DataField field : columns) {
+                // Get field default value
+                // Note: Since Paimon 1.3, we can get default value directly from DataField
+                // Reference: https://github.com/apache/paimon/pull/5754
+                String defaultValue = fieldDefaultValues.get(field.name());
                 Column column = new Column(field.name().toLowerCase(),
-                        PaimonUtil.paimonTypeToDorisType(field.type()), true, null, true, field.description(), true,
+                        PaimonUtil.paimonTypeToDorisType(field.type()), true, null, field.type().isNullable(),
+                        defaultValue, field.description(), true,
                         -1);
                 PaimonUtil.updatePaimonColumnUniqueId(column, field);
                 dorisColumns.add(column);

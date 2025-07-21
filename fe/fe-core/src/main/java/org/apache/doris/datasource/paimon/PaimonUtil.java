@@ -42,6 +42,7 @@ import com.google.common.collect.Maps;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.paimon.CoreOptions;
 import org.apache.paimon.data.InternalRow;
 import org.apache.paimon.data.serializer.InternalRowSerializer;
 import org.apache.paimon.options.ConfigOption;
@@ -371,4 +372,8 @@ public class PaimonUtil {
         }
     }
 
+    public static Map<String, String> getFieldDefaultValues(TableSchema tableSchema) {
+        CoreOptions coreOptions = new CoreOptions(tableSchema.options());
+        return coreOptions.getFieldDefaultValues();
+    }
 }
