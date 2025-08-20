@@ -35,7 +35,11 @@ import org.apache.paimon.types.DataType;
 import org.apache.paimon.types.RowType;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 
@@ -197,5 +201,40 @@ public class PaimonPredicateConverter {
             }
         }
         return literalExpr;
+    }
+
+    private Set<String> getPaimonPredicateName(Expr dorisExpr) {
+        if (dorisExpr == null) {
+            return Collections.emptySet();
+        }
+
+        if (dorisExpr instanceof CompoundPredicate) {
+            CompoundPredicate cp = (CompoundPredicate) dorisExpr;
+            Set<String> result = new HashSet<>();
+            result.addAll(getPaimonPredicateName(cp.getChild(0)));
+            result.addAll(getPaimonPredicateName(cp.getChild(1)));
+            return result;
+        }
+
+        if (dorisExpr instanceof InPredicate) {
+            return getSlotRefColumnName(((InPredicate) dorisExpr).getChild(0));
+        }
+
+        // fallback: other expressions, try first child
+        return getSlotRefColumnName(dorisExpr.getChild(0));
+    }
+
+    public Set<String> getPaimonPredicateName(List<Expr> conjuncts) {
+        return conjuncts.stream()
+                .filter(Objects::nonNull)
+                .flatMap(expr -> getPaimonPredicateName(expr).stream())
+                .collect(Collectors.toSet());
+    }
+
+    private Set<String> getSlotRefColumnName(Expr expr) {
+        SlotRef slotRef = convertDorisExprToSlotRef(expr);
+        return slotRef == null
+                ? Collections.emptySet()
+                : Collections.singleton(slotRef.getColumnName());
     }
 }

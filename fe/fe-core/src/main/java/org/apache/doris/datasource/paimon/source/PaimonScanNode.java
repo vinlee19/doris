@@ -51,7 +51,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.paimon.CoreOptions;
 import org.apache.paimon.data.BinaryRow;
-import org.apache.paimon.predicate.LeafPredicate;
 import org.apache.paimon.predicate.Predicate;
 import org.apache.paimon.schema.TableSchema;
 import org.apache.paimon.table.Table;
@@ -67,6 +66,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -135,6 +135,7 @@ public class PaimonScanNode extends FileQueryScanNode {
     private int paimonSplitNum = 0;
     private List<SplitStat> splitStats = new ArrayList<>();
     private String serializedTable;
+    private Set<String> predicateColumns;
 
     // The schema information involved in the current query process (including historical schema).
     protected ConcurrentHashMap<Long, Boolean> currentQuerySchema = new ConcurrentHashMap<>();
@@ -165,6 +166,7 @@ public class PaimonScanNode extends FileQueryScanNode {
         PaimonPredicateConverter paimonPredicateConverter = new PaimonPredicateConverter(
                 source.getPaimonTable().rowType());
         predicates = paimonPredicateConverter.convertToPaimonExpr(conjuncts);
+        predicateColumns = paimonPredicateConverter.getPaimonPredicateName(conjuncts);
     }
 
     @Override
@@ -270,7 +272,7 @@ public class PaimonScanNode extends FileQueryScanNode {
             dataSplits.add((DataSplit) split);
         }
 
-        boolean applyCountPushdown = getPushDownAggNoGroupingOp() == TPushAggOp.COUNT;
+        boolean applyCountPushdown = isCountPushDownApplied();
         // Used to avoid repeatedly calculating partition info map for the same
         // partition data.
         // And for counting the number of selected partitions for this paimon table.
@@ -400,10 +402,12 @@ public class PaimonScanNode extends FileQueryScanNode {
 
         Table paimonTable = getProcessedTable();
         ReadBuilder readBuilder = paimonTable.newReadBuilder();
-        // limit pushdown
-        if (limit != -1 && predicates.size() == conjuncts.size() && limit <= Integer.MAX_VALUE) {
-            readBuilder.withLimit((int) limit);
+
+        if (canApplyLimitPushDown(paimonTable)) {
+            int boundedLimitValue = convertToSafeIntLimit(limit);
+            readBuilder.withLimit(boundedLimitValue);
         }
+
         return readBuilder.withFilter(predicates)
                 .withProjection(projected)
                 .newScan().plan().splits();
@@ -716,6 +720,41 @@ public class PaimonScanNode extends FileQueryScanNode {
         }
 
         return baseTable;
+    }
+
+    private boolean canApplyLimitPushDown(Table paimonTable) {
+        if (limit == -1 || isCountPushDownApplied()) {
+            return false;
+        }
+
+        if (conjuncts.isEmpty()) {
+            return true;
+        }
+
+        return conjuncts.size() == predicates.size() && isFullPartitionPredicate(paimonTable, predicateColumns);
+    }
+
+    private boolean isCountPushDownApplied() {
+        return getPushDownAggNoGroupingOp() == TPushAggOp.COUNT;
+    }
+
+    private int convertToSafeIntLimit(long limit) {
+        return limit <= Integer.MAX_VALUE ? (int) limit : Integer.MAX_VALUE;
+    }
+
+    private boolean isFullPartitionPredicate(Table paimonTable, Set<String> paimonPredicateColumnName) {
+        List<String> partitionKeys = paimonTable.partitionKeys();
+        if (paimonTable.partitionKeys().size() != paimonPredicateColumnName.size()) {
+            return false;
+        }
+
+        for (String partitionKey : partitionKeys) {
+            if (!paimonPredicateColumnName.contains(partitionKey)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
 
