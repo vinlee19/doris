@@ -702,4 +702,8 @@ public class PaimonUtil {
         final FileStoreTable fileStoreTable = (FileStoreTable) baseTable;
         return fileStoreTable.branchManager().branchExists(branchName);
     }
+
+    public static boolean supportPartitionLimit(Table baseTable) {
+        return true;
+    }
 }

@@ -51,6 +51,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.paimon.CoreOptions;
 import org.apache.paimon.data.BinaryRow;
+import org.apache.paimon.predicate.LeafPredicate;
 import org.apache.paimon.predicate.Predicate;
 import org.apache.paimon.schema.TableSchema;
 import org.apache.paimon.table.Table;
@@ -399,6 +400,10 @@ public class PaimonScanNode extends FileQueryScanNode {
 
         Table paimonTable = getProcessedTable();
         ReadBuilder readBuilder = paimonTable.newReadBuilder();
+        // limit pushdown
+        if (limit != -1 && predicates.size() == conjuncts.size() && limit <= Integer.MAX_VALUE) {
+            readBuilder.withLimit((int) limit);
+        }
         return readBuilder.withFilter(predicates)
                 .withProjection(projected)
                 .newScan().plan().splits();
