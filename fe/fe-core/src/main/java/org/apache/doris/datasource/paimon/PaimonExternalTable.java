@@ -301,6 +301,7 @@ public class PaimonExternalTable extends ExternalTable implements MTMVRelatedTab
 
     @Override
     public String getComment() {
+        makeSureInitialized();
         return paimonTable.comment().isPresent() ? paimonTable.comment().get() : "";
     }
 
