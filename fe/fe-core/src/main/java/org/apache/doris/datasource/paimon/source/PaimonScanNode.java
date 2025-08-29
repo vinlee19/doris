@@ -687,22 +687,19 @@ public class PaimonScanNode extends FileQueryScanNode {
             throw new UserException("Can not specify scan params and table snapshot at same time.");
         }
         TableScanParams theScanParams = getScanParams();
+        TableSnapshot theTableSnapshot = getQueryTableSnapshot();
         if (theScanParams != null) {
             if (theScanParams.incrementalRead()) {
                 return baseTable.copy(getIncrReadParams());
-            }
-
-            if (theScanParams.isBranch()) {
+            } else if (theScanParams.isBranch()) {
                 return PaimonUtil.getTableByBranch(source, baseTable, PaimonUtil.extractBranchOrTagName(theScanParams));
-            }
-            if (theScanParams.isTag()) {
-                return PaimonUtil.getTableByTag(baseTable, PaimonUtil.extractBranchOrTagName(theScanParams));
+            } else if (theScanParams.isTag()) {
+                return PaimonUtil.getTableBySnapshot(baseTable, Optional.empty(), Optional.of(theScanParams));
             }
         }
 
-        TableSnapshot theTableSnapshot = getQueryTableSnapshot();
         if (theTableSnapshot != null) {
-            return PaimonUtil.getTableBySnapshot(baseTable, theTableSnapshot);
+            return PaimonUtil.getTableBySnapshot(baseTable, Optional.of(theTableSnapshot), Optional.empty());
         }
 
         return baseTable;

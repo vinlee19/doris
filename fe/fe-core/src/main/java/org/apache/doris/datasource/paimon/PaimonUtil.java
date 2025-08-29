@@ -90,6 +90,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -517,27 +518,12 @@ public class PaimonUtil {
      * @return a Table instance configured for the specified time travel query
      * @throws UserException if snapshot configuration is invalid
      */
-    public static Table getTableBySnapshot(Table baseTable, TableSnapshot tableSnapshot)
+    public static Table getTableBySnapshot(Table baseTable, Optional<TableSnapshot> tableSnapshot,
+            Optional<TableScanParams> tableScanParams)
             throws UserException {
-        final String value = tableSnapshot.getValue();
-        final TableSnapshot.VersionType type = tableSnapshot.getType();
-        final boolean isDigital = DIGITAL_REGEX.matcher(value).matches();
-
-        switch (type) {
-            case TIME:
-                return isDigital
-                        ? getTableBySnapshotTimestampMillis(baseTable, value)
-                        : getTableBySnapshotTime(baseTable, value);
-
-            case VERSION:
-                if (isDigital) {
-                    return getTableBySnapshotId(baseTable, value);
-                }
-                return getTableByTag(baseTable, value);
-
-            default:
-                throw new UserException(String.format("Unsupported version type: %s", type));
-        }
+        Snapshot snapshot = getPaimonSnapshot(baseTable, tableSnapshot, tableScanParams);
+        return baseTable.copy(
+                Collections.singletonMap(CoreOptions.SCAN_SNAPSHOT_ID.key(), String.valueOf(snapshot.id())));
     }
 
     /**
@@ -704,6 +690,26 @@ public class PaimonUtil {
                 throw new UserException("Unsupported snapshot type: " + type);
         }
     }
+    //
+    // private static Table getPaimonTableByVersion(Table baseTable, String value) throws UserException {
+    //     DataTable table;
+    //     if (baseTable instanceof DataTable) {
+    //         table = (DataTable) baseTable;
+    //     } else {
+    //         throw new UserException("no support time travel format table:" + baseTable.getClass().getSimpleName());
+    //     }
+    //     return table.copy(Collections.singletonMap(CoreOptions.SCAN_VERSION.key(), value));
+    // }
+    //
+    // private static Table getPaimonTableByTimestamp(Table baseTable, long value) throws UserException {
+    //     DataTable table;
+    //     if (baseTable instanceof DataTable) {
+    //         table = (DataTable) baseTable;
+    //     } else {
+    //         throw new UserException("no support time travel format table:" + baseTable.getClass().getSimpleName());
+    //     }
+    //     return table.copy(Collections.singletonMap(CoreOptions.SCAN_TIMESTAMP_MILLIS.key(), String.valueOf(value)));
+    // }
 
     private static Snapshot getPaimonSnapshotByTimestamp(DataTable table, String timestamp, boolean isDigital)
             throws UserException {
@@ -727,8 +733,7 @@ public class PaimonUtil {
             throws UserException {
         long snapshotId = Long.parseLong(snapshotString);
         try {
-            Snapshot snapshot = table.snapshotManager().tryGetSnapshot(snapshotId);
-            return snapshot;
+            return table.snapshotManager().tryGetSnapshot(snapshotId);
         } catch (FileNotFoundException e) {
             throw new UserException("can't find snapshot by id: " + snapshotId, e);
         }
